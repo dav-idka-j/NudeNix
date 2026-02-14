@@ -1,0 +1,73 @@
+nudenet_settings:
+  model_path: null # Optional: Path to a custom Nudenet ONNX model file (e.g., "path/to/640m.onnx")
+  inference_resolution: 320 # Optional: Resolution for model inference (e.g., 320, 640). Default: 320
+
+clustering_settings:
+  enabled: true # Whether to enable clustering of close detection boxes.
+  max_distance: 50 # Maximum distance (in pixels) between boxes of the same label to be considered for clustering.
+
+image_hash_settings:
+  enabled: true # Enable/disable image hashing optimization. Default: true
+  algorithm: "average_hash" # Hashing algorithm: 'average_hash', 'phash', 'dhash', 'whash'. Default: average_hash
+  hash_threshold: 11 # Number of bits that must be different for images to be considered different. Default: 11
+  max_skip_frames: 5 # Maximum number of frames to skip detection even if hashes are similar. Default: 5
+  debug_overlay: false # If true, draws green (skipped detection), red (applied detection) or blue (foreced detection) circles in the top left corner on frames. Default: false
+
+# NudeNix Censoring Settings
+
+# Default settings for all detection labels.
+# These values will apply to any label unless specifically overridden in the 'labels' section.
+all_labels:
+  enabled: false # Disable all labels by default to enable them explicitely
+  min_score: 0.8 # Minimum confidence score for a detection to be considered.
+
+  # List of censors to apply, in order.
+  # Each censor defines its 'type' and specific 'settings'.
+  censors:
+    - type: box # The 'box' censor draws a rectangle.
+      settings:
+        thickness: 2 # Border thickness in pixels. Use -1 for a filled box.
+        size_percent: 100 # Size of the box as a percentage of detection bounding box.
+        color: { r: 0, g: 0, b: 255 } # Color in BGR format (Red, Green, Blue).
+        display_label: true # Whether to display the detection label as text.
+        display_score: true # Whether to display the detection score as text.
+
+# Override or define specific settings for individual labels.
+# Any setting not specified here will inherit from 'all_labels'.
+labels:
+  FEMALE_BREAST_COVERED:
+    min_score: 0.7 # Minimum confidence score for a detection to be considered for this label
+    censors:
+      - type: box
+        settings:
+          thickness: 3
+          size_percent: 90
+          color: { r: 0, g: 255, b: 0 }
+          display_label: true
+          display_score: true
+  FEMALE_BREAST_EXPOSED:
+    censors: # Multiple censors are applied from top to bottom one after the other
+      - type: pixelation
+        settings:
+          strength: 10
+          type: mosaic
+          scale_with_detection_size: true
+          sampling_mode: accurate
+      - type: box
+        settings:
+          thickness: 10
+          size_percent: 90
+          color: { r: 0, g: 0, b: 255 }
+
+  FACE_FEMALE:
+    enabled: false # Turn off detection for this label
+
+  BUTTOCKS_EXPOSED:
+    min_score: 0.9
+    enabled: true
+    censors:
+      - type: box
+        settings:
+          color: { r: 255, g: 0, b: 0 }
+
+# See README.md for all available labels
