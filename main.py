@@ -5,13 +5,15 @@ import numpy as np
 import cv2
 import argparse
 
-from reader import VideoReader
+from video_file_reader import VideoFileReader
 from detector import NsfwDetector
 from censor import CensorProcessor
-from output import VideoOutputWriter
+from video_file_writer import VideoFileWriter
 from config_loader import ConfigLoader
 from postprocessor import BoxClusterer
 from preprocess_detector import ImageHashDetector
+from censor_drawing_contexts.in_place_drawing_context import InPlaceDrawingContext
+from censors_registry import CensorsRegistry # Import CensorsRegistry
 
 # --- Configuration ---
 DEFAULT_INPUT_PATH = "your_video.mp4"
@@ -19,8 +21,8 @@ DEFAULT_OUTPUT_PATH = "output.mp4"
 DEFAULT_OUTPUT_FORMAT = "mp4"
 
 class MainProcessor:
-    def __init__(self, reader: VideoReader, detector: NsfwDetector | ImageHashDetector, censor_processor: CensorProcessor,
-                 writer: VideoOutputWriter, config_loader: ConfigLoader, box_clusterer: BoxClusterer = None):
+    def __init__(self, reader: VideoFileReader, detector: NsfwDetector | ImageHashDetector, censor_processor: CensorProcessor,
+                 writer: VideoFileWriter, config_loader: ConfigLoader, box_clusterer: BoxClusterer = None):
         self.reader = reader
         self.detector = detector
         self.censor_processor = censor_processor
@@ -37,34 +39,38 @@ class MainProcessor:
 
         try:
             frame_count = 0
-            for packet in self.reader.read_packets():
-                if packet.stream == self.reader.audio_in:
-                    self.writer.write_audio_packet(packet)
-                elif packet.stream == self.reader.video_in:
-                    for frame in packet.decode():
-                        frame_count += 1
-                        img = frame.to_ndarray(format='rgb24')
+            video_frame_np, audio_packet = self.reader.read_frame() # Initial read
+            while video_frame_np is not None or audio_packet is not None:
+                if audio_packet is not None:
+                    self.writer.write_audio_packet(audio_packet)
+                if video_frame_np is not None:
+                    frame_count += 1
+                    img = video_frame_np # TODO: Inline
 
-                        # Detect NSFW content
-                        detections = self.detector.detect(img)
+                    # Detect NSFW content
+                    detections = self.detector.detect(img)
 
-                        # Apply clustering if enabled
-                        if self.box_clusterer:
-                            detections = self.box_clusterer.cluster_boxes(detections)
+                    # Apply clustering if enabled
+                    if self.box_clusterer:
+                        detections = self.box_clusterer.cluster_boxes(detections)
 
-                        # Apply censorship
-                        processed_img = self.censor_processor.apply_censorship(img, detections)
+                    # Apply censorship
+                    processed_img = self.censor_processor.apply_censorship(img, detections)
 
-                        # Write processed video frame
-                        processed_av_frame = av.VideoFrame.from_ndarray(processed_img, format='rgb24')
-                        self.writer.write_video_frame(processed_av_frame)
+                    # Convert back to RGB for writing
+                    processed_img_rgb = cv2.cvtColor(processed_img, cv2.COLOR_BGR2RGB)
+                    processed_av_frame = av.VideoFrame.from_ndarray(processed_img_rgb, format='rgb24')
+                    self.writer.write_video_frame(processed_av_frame)
+                
+                # Read next frame for the next iteration
+                video_frame_np, audio_packet = self.reader.read_frame()
 
             self.writer.flush_encoders()
             print(f"Video processing complete. Total frames processed: {frame_count}")
 
         except Exception as e:
             print(f"An error occurred during processing: {e}", file=sys.stderr)
-            import traceback # Keep this import for the MainProcessor.run() method's exception handling
+            import traceback
             traceback.print_exc(file=sys.stderr)
         finally:
             self.writer.close()
@@ -85,6 +91,8 @@ def main():
     parser.add_argument('--enable-image-hash-debug', action='store_true', help='Enable image hash debug overlay, overriding config.')
     parser.add_argument('--nudenet-model-path', type=str, help='Override Nudenet model path from config.')
     parser.add_argument('--nudenet-resolution', type=int, help='Override Nudenet inference resolution from config.')
+    parser.add_argument('--force-overwrite', '-y', action='store_true',
+                        help='Automatically confirm overwriting if output path is same as input.')
 
     args = parser.parse_args()
 
@@ -100,9 +108,25 @@ def main():
         print(f"Error: Input video file not found at {args.input}", file=sys.stderr)
         sys.exit(1)
 
+    # --- Handle Overwriting Input File ---
+    output_path_final = args.output
+    output_path_to_writer = args.output
+    temp_output_path = None
+
+    if args.output_type == 'file' and args.output == args.input:
+        if not args.force_overwrite:
+            confirmation = input(f"Output path '{args.output}' is the same as the input path. Overwrite? (y/N): ").lower()
+            if confirmation != 'y':
+                print("Operation cancelled by user.", file=sys.stderr)
+                sys.exit(0)
+        
+        temp_output_path = args.output + ".part"
+        print(f"Warning: Output will be written to a temporary file '{temp_output_path}' first, then renamed to '{args.output}' upon successful completion.")
+        output_path_to_writer = temp_output_path
+
     print(f"Processing video: {args.input}")
     if args.output_type == 'file':
-        print(f"Output to: {args.output} (Format: {args.format})")
+        print(f"Output to: {output_path_final} (Format: {args.format})")
     else:
         print(f"Output to: {args.output_type} backend.")
 
@@ -121,7 +145,7 @@ def main():
         max_distance = clustering_config.get('max_distance', 50.0)
         box_clusterer = BoxClusterer(max_distance=max_distance)
 
-    reader = VideoReader(args.input)
+    reader = VideoFileReader(args.input)
     # Initialize NsfwDetector
     nsfw_detector_instance = NsfwDetector(model_path=model_path, inference_resolution=inference_resolution)
 
@@ -134,15 +158,18 @@ def main():
 
     detector_to_pass = ImageHashDetector(nsfw_detector_instance, image_hash_config)
 
-    censor_processor = CensorProcessor(config_loader)
+    # Initialize censor_processor and writer based on output type
+    censor_processor = None
+    writer = None
 
-    if not reader.open():
-        sys.exit(1)
+    # Instantiate CensorsRegistry
+    censors_registry = CensorsRegistry()
 
-    # Adjust writer based on output type
     if args.output_type == 'file':
-        writer = VideoOutputWriter(
-            args.output,
+        drawing_context = InPlaceDrawingContext(censors_registry)
+        censor_processor = CensorProcessor(config_loader, drawing_context)
+        writer = VideoFileWriter(
+            output_path_to_writer, # Use the potentially temporary path
             reader, # Pass the reader object
             output_format=args.format
         )
@@ -158,9 +185,30 @@ def main():
         print(f"Error: Unknown output type {args.output_type}", file=sys.stderr)
         sys.exit(1)
 
-    processor = MainProcessor(reader, detector_to_pass, censor_processor, writer, config_loader, box_clusterer)
-    processor.run()
+    # Check if censor_processor and writer were successfully initialized (should be if no sys.exit(1))
+    if censor_processor is None or writer is None:
+        sys.exit(1) # Should not happen if previous sys.exit(1) work as expected
 
+    try:
+        processor = MainProcessor(reader, detector_to_pass, censor_processor, writer, config_loader, box_clusterer)
+        processor.run()
+        # If processing is successful and a temporary file was used, rename it
+        if temp_output_path and os.path.exists(temp_output_path):
+            if os.path.exists(output_path_final):
+                os.remove(output_path_final) # Remove original to replace
+            os.rename(temp_output_path, output_path_final)
+            print(f"Successfully overwrote '{output_path_final}' with processed video.")
+    except Exception as e:
+        print(f"An error occurred during processing: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        # Clean up temporary file if an error occurred
+        if temp_output_path and os.path.exists(temp_output_path):
+            os.remove(temp_output_path)
+            print(f"Cleaned up temporary file: '{temp_output_path}'.", file=sys.stderr)
+    finally:
+        # writer.close() and reader.close() are called inside MainProcessor.run()
+        pass
 
 if __name__ == "__main__":
     try:

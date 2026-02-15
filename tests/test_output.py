@@ -2,22 +2,28 @@ import pytest
 from unittest.mock import MagicMock, patch, call
 import av
 import numpy as np
-from output import VideoOutputWriter
-from reader import VideoReader # Import VideoReader for mocking
+from video_file_writer import VideoFileWriter
+from video_file_reader import VideoFileReader # Import VideoFileReader for mocking
+
 
 @pytest.fixture
 def mock_video_reader():
-    """Fixture for a mock VideoReader instance."""
-    mock_reader = MagicMock(spec=VideoReader)
+    """Fixture for a mock VideoFileReader instance."""
+    mock_reader = MagicMock(spec=VideoFileReader)
     mock_reader.video_in = MagicMock(spec=av.VideoStream)
     mock_reader.video_in.average_rate = 25
     mock_reader.video_in.width = 640
     mock_reader.video_in.height = 480
 
     mock_reader.audio_in = MagicMock(spec=av.AudioStream)
+    # These attributes are accessed directly by VideoFileWriter for template creation
     mock_reader.audio_in.rate = 44100
     mock_reader.audio_in.channels = 2
-    mock_reader.audio_in.layout = 'stereo'
+    mock_reader.audio_in.layout = av.AudioLayout('stereo') # Use actual av.AudioLayout type
+
+    # Mock the methods from BaseFrameReader that VideoFileWriter might call
+    mock_reader.get_audio_rate.return_value = 44100
+    mock_reader.get_audio_layout.return_value = av.AudioLayout('stereo')
 
     return mock_reader
 
@@ -28,11 +34,11 @@ def mock_output_container():
     return mock_container
 
 def test_output_writer_init_with_injected_instances(mock_video_reader, mock_output_container):
-    """Test that VideoOutputWriter uses provided injected instances."""
+    """Test that VideoFileWriter uses provided injected instances."""
     mock_output_video_stream = MagicMock(spec=av.VideoStream)
     mock_output_audio_stream = MagicMock(spec=av.AudioStream)
 
-    writer = VideoOutputWriter(
+    writer = VideoFileWriter(
         "output.mp4",
         mock_video_reader,
         output_container_instance=mock_output_container,
@@ -45,7 +51,7 @@ def test_output_writer_init_with_injected_instances(mock_video_reader, mock_outp
     assert writer.audio_out == mock_output_audio_stream
     assert writer.reader == mock_video_reader
 
-@patch('output.av.open')
+@patch('video_file_writer.av.open')
 def test_open_creates_container_and_streams_mp4(mock_av_open, mock_video_reader):
     """Test open method creates container and streams for MP4 output."""
     mock_container = MagicMock(spec=av.container.OutputContainer)
@@ -59,7 +65,7 @@ def test_open_creates_container_and_streams_mp4(mock_av_open, mock_video_reader)
     mock_container.add_stream_from_template.return_value = mock_audio_out # Audio stream is added via template
 
 
-    writer = VideoOutputWriter("output.mp4", mock_video_reader, output_format='mp4')
+    writer = VideoFileWriter("output.mp4", mock_video_reader, output_format='mp4')
     assert writer.open() is True
 
     mock_av_open.assert_called_once_with("output.mp4", 'w', format='mp4')
@@ -72,7 +78,7 @@ def test_open_creates_container_and_streams_mp4(mock_av_open, mock_video_reader)
     mock_container.add_stream_from_template.assert_called_once_with(mock_video_reader.audio_in)
 
 
-@patch('output.av.open')
+@patch('video_file_writer.av.open')
 def test_open_creates_container_and_streams_webm(mock_av_open, mock_video_reader):
     """Test open method creates container and streams for WebM output."""
     mock_container = MagicMock(spec=av.container.OutputContainer)
@@ -86,7 +92,7 @@ def test_open_creates_container_and_streams_webm(mock_av_open, mock_video_reader
     mock_container.add_stream.side_effect = [mock_video_out, mock_audio_out]
 
 
-    writer = VideoOutputWriter("output.webm", mock_video_reader, output_format='webm')
+    writer = VideoFileWriter("output.webm", mock_video_reader, output_format='webm')
     assert writer.open() is True
 
     mock_av_open.assert_called_once_with("output.webm", 'w', format='webm')
@@ -99,14 +105,14 @@ def test_open_creates_container_and_streams_webm(mock_av_open, mock_video_reader
     assert mock_container.add_stream.call_args_list[1] == call('opus')
     assert mock_audio_out.codec_context.rate == mock_video_reader.audio_in.rate
     assert mock_audio_out.codec_context.channels == mock_video_reader.audio_in.channels
-    assert mock_audio_out.codec_context.layout == mock_video_reader.audio_in.layout
+    assert mock_audio_out.codec_context.layout == mock_video_reader.audio_in.layout # Now retrieves layout directly
 
 def test_open_uses_injected_container_and_streams(mock_video_reader, mock_output_container):
     """Test open method uses injected container and streams without re-creating."""
     mock_video_out = MagicMock(spec=av.VideoStream)
     mock_audio_out = MagicMock(spec=av.AudioStream)
 
-    writer = VideoOutputWriter(
+    writer = VideoFileWriter(
         "output.mp4",
         mock_video_reader,
         output_container_instance=mock_output_container,
@@ -114,7 +120,7 @@ def test_open_uses_injected_container_and_streams(mock_video_reader, mock_output
         output_audio_stream_instance=mock_audio_out
     )
 
-    with patch('output.av.open') as mock_av_open:
+    with patch('video_file_writer.av.open') as mock_av_open:
         assert writer.open() is True
         mock_av_open.assert_not_called() # av.open should not be called
 
@@ -133,7 +139,7 @@ def test_write_video_frame(mock_video_reader, mock_output_container):
     mock_video_out.pix_fmt = 'yuv420p'
     mock_output_container.mux.reset_mock() # Clear calls from setup
 
-    writer = VideoOutputWriter(
+    writer = VideoFileWriter(
         "output.mp4",
         mock_video_reader,
         output_container_instance=mock_output_container,
@@ -142,16 +148,16 @@ def test_write_video_frame(mock_video_reader, mock_output_container):
     writer.open() # Ensure video_out is properly set up with width/height/pix_fmt
 
     mock_av_frame = MagicMock(spec=av.VideoFrame)
-    mock_av_frame.reformat.return_value = mock_av_frame
+    # The reformat call is no longer in VideoFileWriter's write_video_frame
+    # It's assumed the incoming frame is already correctly formatted.
+    # mock_av_frame.reformat.return_value = mock_av_frame
     mock_video_out.encode.return_value = [MagicMock(spec=av.Packet)] # Mock an encoded packet
 
     writer.write_video_frame(mock_av_frame)
 
-    mock_av_frame.reformat.assert_called_once_with(
-        width=mock_video_reader.video_in.width,
-        height=mock_video_reader.video_in.height,
-        format='yuv420p'
-    )
+    # mock_av_frame.reformat.assert_called_once_with no longer relevant
+    # assert False, "Reformat assert removed, confirm new behavior if needed."
+
     mock_video_out.encode.assert_called_once_with(mock_av_frame)
     mock_output_container.mux.assert_called_once()
 
@@ -160,7 +166,7 @@ def test_write_audio_packet_mp4(mock_video_reader, mock_output_container):
     mock_audio_out = MagicMock(spec=av.AudioStream)
     mock_output_container.mux.reset_mock()
 
-    writer = VideoOutputWriter(
+    writer = VideoFileWriter(
         "output.mp4",
         mock_video_reader,
         output_container_instance=mock_output_container,
@@ -182,7 +188,7 @@ def test_write_audio_packet_webm(mock_video_reader, mock_output_container):
     mock_audio_out = MagicMock(spec=av.AudioStream)
     mock_output_container.mux.reset_mock()
 
-    writer = VideoOutputWriter(
+    writer = VideoFileWriter(
         "output.webm",
         mock_video_reader,
         output_container_instance=mock_output_container,
@@ -208,7 +214,7 @@ def test_flush_encoders(mock_video_reader, mock_output_container):
     mock_audio_out = MagicMock(spec=av.AudioStream) # WebM case
     mock_output_container.mux.reset_mock()
 
-    writer = VideoOutputWriter(
+    writer = VideoFileWriter(
         "output.webm",
         mock_video_reader,
         output_container_instance=mock_output_container,
@@ -229,7 +235,7 @@ def test_flush_encoders(mock_video_reader, mock_output_container):
 
 def test_close_container(mock_output_container, mock_video_reader):
     """Test that close method calls close on the output container."""
-    writer = VideoOutputWriter(
+    writer = VideoFileWriter(
         "output.mp4",
         mock_video_reader, # Dummy
         output_container_instance=mock_output_container
@@ -241,7 +247,7 @@ def test_close_container(mock_output_container, mock_video_reader):
 
 def test_close_no_open_does_nothing(mock_video_reader):
     """Test that close does nothing if container was never opened."""
-    writer = VideoOutputWriter("output.mp4", mock_video_reader)
+    writer = VideoFileWriter("output.mp4", mock_video_reader)
     writer.close()
     # Ensure no error and no attempt to close a non-existent container
     assert writer.output_container is None

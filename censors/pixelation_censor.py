@@ -1,84 +1,74 @@
 import cv2
 import numpy as np
+from typing import Tuple, Dict, Any
+
+from detection_types import Detection # Import Detection class
 
 class PixelationCensor:
-    def __init__(self, settings):
-        self.strength = settings.get('strength', 10) # Block size in pixels
-        self.type = settings.get('type', 'mosaic') # For now, only 'mosaic'
+    """
+    Censor implementation that pixelates the detected region with various options.
+    """
+    def __init__(self, settings: Dict[str, Any]):
+        self.settings = settings
+        self.strength = settings.get('strength', 10)
         self.scale_with_detection_size = settings.get('scale_with_detection_size', True)
-        self.grayscale = settings.get('grayscale', False)
-        self.sampling_mode = settings.get('sampling_mode', 'accurate') # 'fast' or 'accurate'
-        self.shape = settings.get('shape', 'square') # For now, only 'square'
+        self.grayscale = settings.get('grayscale', False) # TODO: Move greyscale to its own censor
 
-        if self.type != 'mosaic':
-            print(f"Warning: Pixelation type '{self.type}' not supported. Falling back to 'mosaic'.")
-        if self.shape != 'square':
-            print(f"Warning: Pixelation shape '{self.shape}' not supported. Falling back to 'square'.")
+        sampling_mode = settings.get('sampling_mode', 'accurate')
+        if sampling_mode == 'fast':
+            self.interpolation_down = cv2.INTER_NEAREST
+        else: # 'accurate'
+            self.interpolation_down = cv2.INTER_AREA
 
-    def apply(self, frame_ndarray: np.ndarray, detection: dict):
-        """
-        Applies a pixelation censor effect to the given frame for a single detection.
+        # For upscaling, INTER_NEAREST preserves the blocky pixelated effect
+        self.interpolation_up = cv2.INTER_NEAREST
 
-        Args:
-            frame_ndarray (np.ndarray): The video frame as a NumPy array (RGB), modified in-place.
-            detection (dict): A single detection dictionary from NudeDetector.
-        """
-        x_n, y_n, w_n, h_n = detection['box']
+        if self.strength <= 0:
+            self.strength = 1 # Prevent invalid values
 
-        # Ensure coordinates are integers
-        x1, y1, w, h = int(x_n), int(y_n), int(w_n), int(h_n)
+    def apply(self, image_np: np.ndarray, detection: Detection) -> None:
+        x_min, y_min, x_max, y_max = detection.x1(), detection.y1(), detection.x2(), detection.y2()
 
-        # Ensure bounding box is valid and within frame dimensions
-        frame_h, frame_w, _ = frame_ndarray.shape
-        x1 = max(0, x1)
-        y1 = max(0, y1)
-        w = min(w, frame_w - x1)
-        h = min(h, frame_h - y1)
+        # Ensure bounding box coordinates are within image dimensions
+        h, w = image_np.shape[:2]
+        x_min = max(0, x_min)
+        y_min = max(0, y_min)
+        x_max = min(w, x_max)
+        y_max = min(h, y_max)
 
-        if w <= 0 or h <= 0:
-            return # Nothing to censor if box is invalid
+        if x_max <= x_min or y_max <= y_min:
+            return # Invalid or empty bounding box
 
-        # Calculate effective strength (pixel block size)
-        pixel_block_size = self.strength
+        # Extract the region of interest
+        roi = image_np[y_min:y_max, x_min:x_max]
+        if roi.shape[0] == 0 or roi.shape[1] == 0:
+            return
+
+        # Calculate pixel size
         if self.scale_with_detection_size:
-            # Scale strength relative to the smallest dimension of the detection
-            # e.g., strength as a percentage of width/height
-            min_dim = min(w, h)
-            if min_dim > 0:
-                pixel_block_size = max(1, int(min_dim * (self.strength / 100.0))) # Interpret strength as percentage
+            # Strength is a percentage of the smaller dimension
+            smaller_dim = min(roi.shape[0], roi.shape[1])
+            pixel_size = int((self.strength / 100.0) * smaller_dim)
+        else:
+            # Strength is an absolute pixel size
+            pixel_size = self.strength
 
-        # Ensure pixel_block_size is at least 1
-        pixel_block_size = max(1, pixel_block_size)
+        if pixel_size <= 0:
+            pixel_size = 1
 
-        # Get the region of interest (ROI)
-        roi = frame_ndarray[y1:y1+h, x1:x1+w]
-
-        if roi.shape[0] <= 0 or roi.shape[1] <= 0:
-            return # Invalid ROI
-
-        # Apply grayscale if enabled
+        # Handle grayscale
         if self.grayscale:
             roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            # Convert back to 3 channels if pixelation needs it
+            # Revert back to 3 channels for merging
             roi = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
 
-        # Calculate new dimensions for downscaling
-        new_w = w // pixel_block_size
-        new_h = h // pixel_block_size
+        # Determine the size of the small, pixelated ROI
+        target_w = max(1, roi.shape[1] // pixel_size)
+        target_h = max(1, roi.shape[0] // pixel_size)
 
-        if new_w <= 0 or new_h <= 0:
-            return # Cannot pixelate if downscaled dimensions are zero or negative
+        # Downscale and then upscale to achieve pixelation
+        small_roi = cv2.resize(roi, (target_w, target_h), interpolation=self.interpolation_down)
+        pixelated_roi = cv2.resize(small_roi, (roi.shape[1], roi.shape[0]), interpolation=self.interpolation_up)
 
-        # Downscale
-        # INTER_AREA is generally good for downsampling, INTER_NEAREST for fast blocks on upscale
-        interpolation_down = cv2.INTER_AREA # 'accurate' mosaic
-        if self.sampling_mode == 'fast':
-            interpolation_down = cv2.INTER_NEAREST # For 'fast' (center pixel, less accurate average)
-
-        roi_small = cv2.resize(roi, (new_w, new_h), interpolation=interpolation_down)
-
-        # Upscale to create pixelation effect
-        pixelated_roi = cv2.resize(roi_small, (w, h), interpolation=cv2.INTER_NEAREST)
-
-        # Place pixelated ROI back into the original frame
-        frame_ndarray[y1:y1+h, x1:x1+w] = pixelated_roi
+        # Place the pixelated ROI back into the original image
+        image_np[y_min:y_max, x_min:x_max] = pixelated_roi

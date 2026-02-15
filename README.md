@@ -168,7 +168,7 @@ This section details the censor types currently implemented and available for us
 *   **Settings:**
     *   `thickness` (integer, default: `2`): The thickness of the border in pixels. Set to `-1` to fill the entire box.
     *   `size_percent` (integer, default: `100`): The size of the box as a percentage of the detected bounding box (e.g., `90` for 90% of the original size).
-    *   `color` (object, default: `{r: 0, g: 0, b: 255}` - Red): The color of the box in BGR format. Example: `{r: 0, g: 255, b: 0}` for Green.
+    *   `color` (object, default: `{r: 0, g: 0, b: 255}` - Red): The color of the box in RGB format. Example: `{r: 0, g: 255, b: 0}` for Green.
     *   `display_label` (boolean, default: `true`): Whether to display the detection label as text above the box.
     *   `display_score` (boolean, default: `true`): Whether to display the detection score as text above the box.
 
