@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Tuple, Union, Optional, Dict, Any
 
 import numpy as np
-import av # For av.AudioFrame and av.AudioLayout type hints
+import av
 
 class BaseFrameReader(ABC):
     """
@@ -21,14 +21,14 @@ class BaseFrameReader(ABC):
         pass
 
     @abstractmethod
-    def read_frame(self) -> Tuple[Optional[np.ndarray], Optional[av.AudioFrame]]:
+    def read_frame(self) -> Tuple[Optional[np.ndarray], Optional[av.Packet], Optional[float]]:
         """
-        Reads the next video frame and an optional audio frame from the source.
+        Reads the next video frame and an optional audio packet from the source.
 
         Returns:
-            Tuple[Optional[np.ndarray], Optional[av.AudioFrame]]:
-                A tuple containing the video frame (as a NumPy array, or None)
-                and an optional audio frame (or None).
+            Tuple[Optional[np.ndarray], Optional[av.Packet], Optional[float]]:
+                A tuple containing the video frame (as a NumPy array, or None),
+                an optional audio packet (or None), and the PTS of the video frame in seconds (or None).
         """
         pass
 
@@ -88,5 +88,19 @@ class BaseFrameReader(ABC):
 
         Returns:
             Optional[int]: The audio sample rate, or None if no audio stream.
+        """
+        pass
+
+    @abstractmethod
+    def get_video_stream(self) -> Optional[av.VideoStream]:
+        """
+        Returns the underlying PyAV video stream object if available.
+        """
+        pass
+
+    @abstractmethod
+    def get_audio_stream(self) -> Optional[av.AudioStream]:
+        """
+        Returns the underlying PyAV audio stream object if available.
         """
         pass

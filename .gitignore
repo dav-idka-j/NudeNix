@@ -217,4 +217,5 @@ __marimo__/
 .streamlit/secrets.toml
 
 *.mp4
+*.onnx
 censor_settings.yaml

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
+from fractions import Fraction
 
 import av
 
@@ -52,5 +53,40 @@ class BaseFrameWriter(ABC):
         """
         Flushes any pending frames/packets from the encoders to the output.
         Should be called before closing the writer.
+        """
+        pass
+
+    @abstractmethod
+    def get_fps(self) -> float:
+        """
+        Returns the output video frames per second.
+        """
+        pass
+
+    @abstractmethod
+    def get_frame_size(self) -> Tuple[int, int]:
+        """
+        Returns the output video frame size as (width, height).
+        """
+        pass
+
+    @abstractmethod
+    def get_audio_layout(self) -> Optional[av.AudioLayout]:
+        """
+        Returns the output audio layout.
+        """
+        pass
+
+    @abstractmethod
+    def get_audio_rate(self) -> Optional[int]:
+        """
+        Returns the output audio sample rate.
+        """
+        pass
+
+    @abstractmethod
+    def get_video_time_base(self) -> Optional[Fraction]:
+        """
+        Returns the time base of the output video stream.
         """
         pass

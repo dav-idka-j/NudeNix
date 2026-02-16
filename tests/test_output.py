@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch, call
+from fractions import Fraction
 import av
 import numpy as np
 from video_file_writer import VideoFileWriter
@@ -10,18 +11,21 @@ from video_file_reader import VideoFileReader # Import VideoFileReader for mocki
 def mock_video_reader():
     """Fixture for a mock VideoFileReader instance."""
     mock_reader = MagicMock(spec=VideoFileReader)
-    mock_reader.video_in = MagicMock(spec=av.VideoStream)
-    mock_reader.video_in.average_rate = 25
-    mock_reader.video_in.width = 640
-    mock_reader.video_in.height = 480
+    mock_video_in = MagicMock(spec=av.VideoStream)
+    mock_video_in.average_rate = 25
+    mock_video_in.width = 640
+    mock_video_in.height = 480
 
-    mock_reader.audio_in = MagicMock(spec=av.AudioStream)
-    # These attributes are accessed directly by VideoFileWriter for template creation
-    mock_reader.audio_in.rate = 44100
-    mock_reader.audio_in.channels = 2
-    mock_reader.audio_in.layout = av.AudioLayout('stereo') # Use actual av.AudioLayout type
+    mock_audio_in = MagicMock(spec=av.AudioStream)
 
-    # Mock the methods from BaseFrameReader that VideoFileWriter might call
+    mock_audio_in.rate = 44100
+    mock_audio_in.channels = 2
+    mock_audio_in.layout = av.AudioLayout('stereo')
+
+    mock_reader.get_fps.return_value = 25.0
+    mock_reader.get_frame_size.return_value = (640, 480)
+    mock_reader.get_video_stream.return_value = mock_video_in
+    mock_reader.get_audio_stream.return_value = mock_audio_in
     mock_reader.get_audio_rate.return_value = 44100
     mock_reader.get_audio_layout.return_value = av.AudioLayout('stereo')
 
@@ -70,12 +74,14 @@ def test_open_creates_container_and_streams_mp4(mock_av_open, mock_video_reader)
 
     mock_av_open.assert_called_once_with("output.mp4", 'w', format='mp4')
     # Check video stream setup
-    mock_container.add_stream.assert_called_once_with('h264', rate=mock_video_reader.video_in.average_rate)
-    assert mock_video_out.width == mock_video_reader.video_in.width
-    assert mock_video_out.height == mock_video_reader.video_in.height
+    from fractions import Fraction
+    expected_rate = Fraction(mock_video_reader.get_fps.return_value).limit_denominator()
+    mock_container.add_stream.assert_called_once_with('h264', rate=expected_rate)
+    assert mock_video_out.width == mock_video_reader.get_frame_size.return_value[0]
+    assert mock_video_out.height == mock_video_reader.get_frame_size.return_value[1]
     assert mock_video_out.pix_fmt == 'yuv420p'
     # Check audio stream setup
-    mock_container.add_stream_from_template.assert_called_once_with(mock_video_reader.audio_in)
+    mock_container.add_stream_from_template.assert_called_once_with(mock_video_reader.get_audio_stream.return_value)
 
 
 @patch('video_file_writer.av.open')
@@ -97,15 +103,17 @@ def test_open_creates_container_and_streams_webm(mock_av_open, mock_video_reader
 
     mock_av_open.assert_called_once_with("output.webm", 'w', format='webm')
     # Check video stream setup
-    assert mock_container.add_stream.call_args_list[0] == call('libvpx', rate=mock_video_reader.video_in.average_rate)
-    assert mock_video_out.width == mock_video_reader.video_in.width
-    assert mock_video_out.height == mock_video_reader.video_in.height
+    from fractions import Fraction
+    expected_rate = Fraction(mock_video_reader.get_fps.return_value).limit_denominator()
+    assert mock_container.add_stream.call_args_list[0] == call('libvpx', rate=expected_rate)
+    assert mock_video_out.width == mock_video_reader.get_frame_size.return_value[0]
+    assert mock_video_out.height == mock_video_reader.get_frame_size.return_value[1]
     assert mock_video_out.pix_fmt == 'yuv420p'
     # Check audio stream setup
     assert mock_container.add_stream.call_args_list[1] == call('opus')
-    assert mock_audio_out.codec_context.rate == mock_video_reader.audio_in.rate
-    assert mock_audio_out.codec_context.channels == mock_video_reader.audio_in.channels
-    assert mock_audio_out.codec_context.layout == mock_video_reader.audio_in.layout # Now retrieves layout directly
+    assert mock_audio_out.codec_context.rate == mock_video_reader.get_audio_rate.return_value
+    assert mock_audio_out.codec_context.channels == mock_video_reader.get_audio_stream.return_value.channels
+    assert mock_audio_out.codec_context.layout == mock_video_reader.get_audio_layout.return_value # Now retrieves layout directly
 
 def test_open_uses_injected_container_and_streams(mock_video_reader, mock_output_container):
     """Test open method uses injected container and streams without re-creating."""
@@ -134,8 +142,6 @@ def test_open_uses_injected_container_and_streams(mock_video_reader, mock_output
 def test_write_video_frame(mock_video_reader, mock_output_container):
     """Test write_video_frame encodes and muxes a video frame."""
     mock_video_out = MagicMock(spec=av.VideoStream)
-    mock_video_out.width = mock_video_reader.video_in.width
-    mock_video_out.height = mock_video_reader.video_in.height
     mock_video_out.pix_fmt = 'yuv420p'
     mock_output_container.mux.reset_mock() # Clear calls from setup
 
@@ -175,8 +181,12 @@ def test_write_audio_packet_mp4(mock_video_reader, mock_output_container):
     )
     writer.open()
 
-    mock_av_packet = MagicMock(spec=av.Packet)
-    mock_av_packet.dts = 100 # Ensure dts is not None
+    mock_av_packet = MagicMock()
+    mock_av_packet.pts = 100
+    mock_av_packet.dts = 100
+    mock_av_packet.duration = 10
+    mock_av_packet.time_base = Fraction(1, 44100)
+    mock_audio_out.time_base = Fraction(1, 44100)
 
     writer.write_audio_packet(mock_av_packet)
 

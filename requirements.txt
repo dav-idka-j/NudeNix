@@ -1,0 +1,9 @@
+av
+opencv-python-headless
+numpy
+nudenet
+pyyaml
+pytest
+imagehash
+pillow
+PyQt5

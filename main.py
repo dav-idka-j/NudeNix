@@ -4,25 +4,29 @@ import av
 import numpy as np
 import cv2
 import argparse
+import logging
+import time
+from fractions import Fraction
+from urllib.parse import urlparse
 
 from video_file_reader import VideoFileReader
+from screen_reader import ScreenCaptureReader
 from detector import NsfwDetector
 from censor import CensorProcessor
 from video_file_writer import VideoFileWriter
+from screen_writer import ScreenWriter
 from config_loader import ConfigLoader
 from postprocessor import BoxClusterer
 from preprocess_detector import ImageHashDetector
 from censor_drawing_contexts.in_place_drawing_context import InPlaceDrawingContext
-from censors_registry import CensorsRegistry # Import CensorsRegistry
+from censor_drawing_contexts.overlay_drawing_context import OverlayDrawingContext
+from censors_registry import CensorsRegistry
 
-# --- Configuration ---
-DEFAULT_INPUT_PATH = "your_video.mp4"
-DEFAULT_OUTPUT_PATH = "output.mp4"
-DEFAULT_OUTPUT_FORMAT = "mp4"
+logger = logging.getLogger(__name__)
 
 class MainProcessor:
-    def __init__(self, reader: VideoFileReader, detector: NsfwDetector | ImageHashDetector, censor_processor: CensorProcessor,
-                 writer: VideoFileWriter, config_loader: ConfigLoader, box_clusterer: BoxClusterer = None):
+    def __init__(self, reader: VideoFileReader | ScreenCaptureReader, detector: NsfwDetector | ImageHashDetector, censor_processor: CensorProcessor,
+                 writer: VideoFileWriter | ScreenWriter, config_loader: ConfigLoader, box_clusterer: BoxClusterer = None):
         self.reader = reader
         self.detector = detector
         self.censor_processor = censor_processor
@@ -39,184 +43,229 @@ class MainProcessor:
 
         try:
             frame_count = 0
-            video_frame_np, audio_packet = self.reader.read_frame() # Initial read
+
+            video_frame_np, audio_packet, pts = self.reader.read_frame()
+
             while video_frame_np is not None or audio_packet is not None:
                 if audio_packet is not None:
-                    self.writer.write_audio_packet(audio_packet)
+                    if isinstance(self.writer, VideoFileWriter):
+                        self.writer.write_audio_packet(audio_packet)
+
                 if video_frame_np is not None:
                     frame_count += 1
-                    img = video_frame_np # TODO: Inline
 
-                    # Detect NSFW content
-                    detections = self.detector.detect(img)
+                    detections = self.detector.detect(video_frame_np)
 
-                    # Apply clustering if enabled
                     if self.box_clusterer:
                         detections = self.box_clusterer.cluster_boxes(detections)
 
-                    # Apply censorship
-                    processed_img = self.censor_processor.apply_censorship(img, detections)
+                    processed_img = self.censor_processor.apply_censorship(video_frame_np, detections)
 
-                    # Convert back to RGB for writing
+                    # Convert back to RGB for writing/display
                     processed_img_rgb = cv2.cvtColor(processed_img, cv2.COLOR_BGR2RGB)
                     processed_av_frame = av.VideoFrame.from_ndarray(processed_img_rgb, format='rgb24')
+
+                    # Set PTS based on reader (original file PTS or calculated screen PTS)
+                    if pts is not None:
+                        # Use high-precision microseconds for the frame's timebase
+                        processed_av_frame.time_base = Fraction(1, 1000000)
+                        processed_av_frame.pts = int(pts * 1000000)
+                    else:
+                        # Fallback to frame index based on writer's FPS
+                        fps = self.writer.get_fps()
+                        tb = Fraction(1, int(fps)) if fps > 0 else Fraction(1, 30)
+                        processed_av_frame.time_base = tb
+                        processed_av_frame.pts = frame_count - 1
+
                     self.writer.write_video_frame(processed_av_frame)
-                
-                # Read next frame for the next iteration
-                video_frame_np, audio_packet = self.reader.read_frame()
+
+                video_frame_np, audio_packet, pts = self.reader.read_frame()
 
             self.writer.flush_encoders()
-            print(f"Video processing complete. Total frames processed: {frame_count}")
+            print(f"Processing complete. Total frames processed: {frame_count}")
 
         except Exception as e:
-            print(f"An error occurred during processing: {e}", file=sys.stderr)
-            import traceback
-            traceback.print_exc(file=sys.stderr)
+            logger.error(f"An error occurred during processing: {e}", exc_info=True)
+            sys.exit(1)
         finally:
             self.writer.close()
             self.reader.close()
             print("All containers closed.")
 
-def main():
-    parser = argparse.ArgumentParser(description="NudeNix: Real-time NSFW content detection and censoring for videos.")
+def main(args):
+    input_uri = urlparse(args.input)
+    output_uri = urlparse(args.output)
 
-    parser.add_argument('--input', '-i', type=str, required=True, help='Path to the input video file.')
-    parser.add_argument('--output', '-o', type=str, help='Path to the output video file (required if --output-type is "file").')
-    parser.add_argument('--output-type', type=str, choices=['file', 'mpv', 'pyvidplayer2'], default='file',
-                        help='Destination for the processed video stream.')
-    parser.add_argument('--format', '-f', type=str, choices=['mp4', 'webm'], default='mp4',
-                        help='Output video format (relevant if --output-type is "file").')
-    parser.add_argument('--config', '-c', type=str, help='Path to a custom censor_settings.yaml file.')
-    parser.add_argument('--disable-image-hash', action='store_true', help='Disable image hashing optimization, overriding config.')
-    parser.add_argument('--enable-image-hash-debug', action='store_true', help='Enable image hash debug overlay, overriding config.')
-    parser.add_argument('--nudenet-model-path', type=str, help='Override Nudenet model path from config.')
-    parser.add_argument('--nudenet-resolution', type=int, help='Override Nudenet inference resolution from config.')
-    parser.add_argument('--force-overwrite', '-y', action='store_true',
-                        help='Automatically confirm overwriting if output path is same as input.')
-
-    args = parser.parse_args()
-
-    # Validate arguments based on output-type
-    if args.output_type == 'file' and not args.output:
-        parser.error("--output is required when --output-type is 'file'.")
-    if args.output_type != 'file' and args.output:
-        print("Warning: --output argument is ignored when --output-type is not 'file'.", file=sys.stderr)
-    if args.output_type != 'file' and args.format:
-        print("Warning: --format argument is ignored when --output-type is not 'file'.", file=sys.stderr)
-
-    if not os.path.exists(args.input):
-        print(f"Error: Input video file not found at {args.input}", file=sys.stderr)
-        sys.exit(1)
-
-    # --- Handle Overwriting Input File ---
-    output_path_final = args.output
-    output_path_to_writer = args.output
+    output_path_final = None
+    output_path_to_writer = None
     temp_output_path = None
+    is_file_output = output_uri.scheme == 'file'
 
-    if args.output_type == 'file' and args.output == args.input:
-        if not args.force_overwrite:
-            confirmation = input(f"Output path '{args.output}' is the same as the input path. Overwrite? (y/N): ").lower()
-            if confirmation != 'y':
-                print("Operation cancelled by user.", file=sys.stderr)
-                sys.exit(0)
-        
-        temp_output_path = args.output + ".part"
-        print(f"Warning: Output will be written to a temporary file '{temp_output_path}' first, then renamed to '{args.output}' upon successful completion.")
-        output_path_to_writer = temp_output_path
+    if is_file_output:
+        output_path_final = output_uri.path
+        output_path_to_writer = output_path_final
+        # Check if input and output paths are the same
+        if input_uri.scheme == 'file' and input_uri.path == output_uri.path:
+            temp_output_path = output_uri.path + ".part"
+            output_path_to_writer = temp_output_path
 
-    print(f"Processing video: {args.input}")
-    if args.output_type == 'file':
-        print(f"Output to: {output_path_final} (Format: {args.format})")
-    else:
-        print(f"Output to: {args.output_type} backend.")
+    print(f"Input: {args.input}")
+    print(f"Output: {args.output}")
 
-    # --- Initialize Components ---
-    config_loader = ConfigLoader(config_path=args.config)
+    config_loader = ConfigLoader()
 
-    # Get Nudenet specific settings from config and apply CLI overrides
     nudenet_config = config_loader.get_nudenet_settings()
-    model_path = args.nudenet_model_path if args.nudenet_model_path else nudenet_config.get('model_path')
-    inference_resolution = args.nudenet_resolution if args.nudenet_resolution else nudenet_config.get('inference_resolution', 320)
+    model_path = nudenet_config.get('model_path')
+    inference_resolution = nudenet_config.get('inference_resolution', 320)
 
-    # Get Clustering specific settings from config
     clustering_config = config_loader.get_clustering_settings()
     box_clusterer = None
     if clustering_config.get('enabled', False):
         max_distance = clustering_config.get('max_distance', 50.0)
         box_clusterer = BoxClusterer(max_distance=max_distance)
 
-    reader = VideoFileReader(args.input)
-    # Initialize NsfwDetector
     nsfw_detector_instance = NsfwDetector(model_path=model_path, inference_resolution=inference_resolution)
-
-    # Get image hash settings from config and apply CLI overrides
     image_hash_config = config_loader.get_image_hash_settings()
-    if args.disable_image_hash:
-        image_hash_config['enabled'] = False
-    if args.enable_image_hash_debug:
-        image_hash_config['debug_overlay'] = True
-
     detector_to_pass = ImageHashDetector(nsfw_detector_instance, image_hash_config)
 
-    # Initialize censor_processor and writer based on output type
-    censor_processor = None
-    writer = None
-
-    # Instantiate CensorsRegistry
     censors_registry = CensorsRegistry()
 
-    if args.output_type == 'file':
+    reader = None
+    if input_uri.scheme == 'file':
+        reader = VideoFileReader(input_uri.path)
+    elif input_uri.scheme == 'screen':
+        monitor = int(input_uri.netloc or 1)
+        reader = ScreenCaptureReader(monitor=monitor)
+
+    writer = None
+    drawing_context = None
+
+    if output_uri.scheme == 'file':
         drawing_context = InPlaceDrawingContext(censors_registry)
-        censor_processor = CensorProcessor(config_loader, drawing_context)
         writer = VideoFileWriter(
-            output_path_to_writer, # Use the potentially temporary path
-            reader, # Pass the reader object
+            output_path_to_writer,
+            reader,
             output_format=args.format
         )
-    elif args.output_type == 'mpv':
-        # TODO: Implement MPV writer logic
-        print("Error: MPV output not yet implemented.", file=sys.stderr)
-        sys.exit(1)
-    elif args.output_type == 'pyvidplayer2':
-        # TODO: Implement PyVidPlayer2 writer logic
-        print("Error: PyVidPlayer2 output not yet implemented.", file=sys.stderr)
+    elif output_uri.scheme == 'overlay':
+        drawing_context = OverlayDrawingContext(censors_registry)
+        writer = ScreenWriter(
+            reader=reader,
+            overlay_context=drawing_context
+        )
+    elif output_uri.scheme in ['mpv', 'pyvidplayer2']:
+        print(f"Error: Output scheme '{output_uri.scheme}' not yet implemented.", file=sys.stderr)
         sys.exit(1)
     else:
-        print(f"Error: Unknown output type {args.output_type}", file=sys.stderr)
+        print(f"Error: Unknown output scheme '{output_uri.scheme}'.", file=sys.stderr)
         sys.exit(1)
 
-    # Check if censor_processor and writer were successfully initialized (should be if no sys.exit(1))
-    if censor_processor is None or writer is None:
-        sys.exit(1) # Should not happen if previous sys.exit(1) work as expected
+    censor_processor = CensorProcessor(config_loader, drawing_context)
 
     try:
         processor = MainProcessor(reader, detector_to_pass, censor_processor, writer, config_loader, box_clusterer)
         processor.run()
+
         # If processing is successful and a temporary file was used, rename it
         if temp_output_path and os.path.exists(temp_output_path):
             if os.path.exists(output_path_final):
-                os.remove(output_path_final) # Remove original to replace
+                os.remove(output_path_final)
             os.rename(temp_output_path, output_path_final)
-            print(f"Successfully overwrote '{output_path_final}' with processed video.")
+            print(f"Successfully saved to '{output_path_final}'.")
+
     except Exception as e:
-        print(f"An error occurred during processing: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
+        logger.error(f"An error occurred during processing: {e}", exc_info=True)
         # Clean up temporary file if an error occurred
         if temp_output_path and os.path.exists(temp_output_path):
             os.remove(temp_output_path)
             print(f"Cleaned up temporary file: '{temp_output_path}'.", file=sys.stderr)
+        sys.exit(1)
     finally:
-        # writer.close() and reader.close() are called inside MainProcessor.run()
+        # reader and writer are closed within processor.run()
         pass
 
+def _resolve_file_uri_path(parser, uri_parse_result, is_input=False):
+    """
+    Resolves a file:// URI path, handling relative paths and converting to an absolute file:/// URI.
+    Performs existence checks if it's an input path.
+    """
+    file_path_component = ""
+    if uri_parse_result.netloc and not uri_parse_result.path:
+        # Handles 'file://filename.mp4' where filename.mp4 is in netloc
+        file_path_component = uri_parse_result.netloc
+    elif uri_parse_result.path:
+        # Handles 'file:///absolute/path' or 'file://./relative/path'
+        file_path_component = uri_parse_result.path
+    else: # e.g., "file://"
+        parser.error(f"File path cannot be empty for 'file://' scheme.")
+
+    # Resolve to an absolute path for os.path.exists and consistency
+    resolved_path = os.path.abspath(file_path_component)
+
+    if is_input:
+        if not os.path.exists(resolved_path):
+            parser.error(f"Input file not found at '{resolved_path}'")
+
+    # Return the absolute file:/// URI string
+    return f"file:///{resolved_path.lstrip('/')}"
+
+
+def parse_args(args):
+    parser = argparse.ArgumentParser(description="NudeNix: Real-time NSFW content detection and censoring.")
+
+    parser.add_argument('--input', '-i', type=str, required=True,
+                        help='Input source URI, e.g., "file:///path/to/video.mp4" or "screen://1" for monitor 1.')
+    parser.add_argument('--output', '-o', type=str, required=True,
+                        help='Output destination URI, e.g., "file:///path/to/output.mp4" or "overlay://".')
+
+    parser.add_argument('--force-overwrite', '-y', action='store_true',
+                        help='Automatically confirm overwriting if output path is same as input.')
+
+    parsed_args = parser.parse_args(args)
+
+    input_uri = urlparse(parsed_args.input)
+    output_uri = urlparse(parsed_args.output)
+
+    if input_uri.scheme == 'file':
+        parsed_args.input = _resolve_file_uri_path(parser, input_uri, is_input=True)
+        input_uri = urlparse(parsed_args.input)
+    elif input_uri.scheme == 'screen':
+        if input_uri.netloc and not input_uri.netloc.isdigit():
+            parser.error(f"Invalid monitor number for screen input: '{input_uri.netloc}'")
+    else:
+        parser.error(f"Unsupported input scheme: '{input_uri.scheme}'. Supported schemes are 'file', 'screen'.")
+
+    if output_uri.scheme == 'file':
+        parsed_args.output = _resolve_file_uri_path(parser, output_uri, is_input=False)
+        output_uri = urlparse(parsed_args.output)
+
+        if input_uri.scheme == 'file' and output_uri.scheme == 'file' and input_uri.path == output_uri.path:
+            if not parsed_args.force_overwrite:
+                confirmation = input(
+                    f"Output path '{output_uri.path}' is the same as the input path. Overwrite? (y/N): ").lower()
+                if confirmation != 'y':
+                    print("Operation cancelled by user.", file=sys.stderr)
+                    sys.exit(0)
+
+        # Infer format from the resolved output path
+        _, ext = os.path.splitext(output_uri.path)
+        # TODO: Add more robust format detection or mapping
+        parsed_args.format = ext[1:].lower() if ext else 'mp4'
+    elif output_uri.scheme in ['overlay', 'mpv', 'pyvidplayer2']:
+        parsed_args.format = None # No format for stream outputs
+    else:
+        parser.error(f"Unsupported output scheme: '{output_uri.scheme}'. Supported schemes are 'file', 'overlay', 'mpv', 'pyvidplayer2'.")
+
+    return parsed_args
+
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     try:
-        main()
+        args = parse_args(sys.argv[1:])
+        main(args)
     except SystemExit:
         # sys.exit() was called, which is expected for some error conditions
         pass
     except Exception as e:
-        print(f"An unexpected error occurred: {e}", file=sys.stderr)
-        import traceback # Ensure traceback is imported for this block
-        traceback.print_exc(file=sys.stderr)
+        logger.critical(f"An unexpected error occurred in main: {e}", exc_info=True)
+        sys.exit(1)

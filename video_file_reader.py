@@ -22,14 +22,11 @@ class VideoFileReader(BaseFrameReader):
 
         if self.input_container.streams.audio:
             self.audio_in = self.input_container.streams.audio[0]
-            # print(f"Input audio stream: {self.audio_in.name}") # Commented for cleaner output
         else:
-            # print("No audio stream found.") # Commented for cleaner output
             pass
 
         if self.input_container.streams.video:
             self.video_in = self.input_container.streams.video[0]
-            # print(f"Input video stream: {self.video_in.name}") # Commented for cleaner output
         else:
             print("No video stream found. Exiting.", file=sys.stderr)
             return False
@@ -39,7 +36,7 @@ class VideoFileReader(BaseFrameReader):
 
         return True
 
-    def read_frame(self) -> Tuple[Optional[np.ndarray], Optional[av.AudioFrame]]:
+    def read_frame(self) -> Tuple[Optional[np.ndarray], Optional[av.Packet], Optional[int]]:
         if not self.packets:
             raise RuntimeError("Input container not opened or not initialized. Call .open() first.")
 
@@ -50,7 +47,8 @@ class VideoFileReader(BaseFrameReader):
                     frame = next(self.video_frames)
                     if frame is not None:
                         video_frame_np = frame.to_ndarray(format="bgr24")
-                        return video_frame_np, None
+                        pts_seconds = float(frame.pts * frame.time_base) if frame.pts is not None else None
+                        return video_frame_np, None, pts_seconds
                 except StopIteration:
                     self.video_frames = None # Current video packet's frames are exhausted
                 except Exception as e:
@@ -68,7 +66,8 @@ class VideoFileReader(BaseFrameReader):
                         frame = next(self.video_frames)
                         if frame is not None:
                             video_frame_np = frame.to_ndarray(format="bgr24")
-                            return video_frame_np, None
+                            pts_seconds = float(frame.pts * frame.time_base) if frame.pts is not None else None
+                            return video_frame_np, None, pts_seconds
                     except StopIteration:
                         self.video_frames = None # This video packet yielded no frames
                         continue # Go to next packet
@@ -79,20 +78,19 @@ class VideoFileReader(BaseFrameReader):
 
                 elif packet.stream.type == 'audio':
                     # The main loop needs the packet to write to output
-                    return None, packet # Return the audio packet
+                    return None, packet, None # Return the audio packet
                 else: # Other stream types (subtitles, data, etc.)
                     continue # Get next packet
 
             except StopIteration:
-                return None, None # All packets from self.packets are exhausted
+                return None, None, None # All packets from self.packets are exhausted
             except Exception as e:
                 print(f"Error decoding packet: {e}", file=sys.stderr)
-                return None, None
+                return None, None, None
 
     def close(self) -> None:
         if self.input_container:
             self.input_container.close()
-            # print("Input container closed.") # Commented for cleaner output
         self.input_container = None
         self.audio_in = None
         self.video_in = None
@@ -129,3 +127,9 @@ class VideoFileReader(BaseFrameReader):
         if self.audio_in:
             return self.audio_in.sample_rate
         return None
+
+    def get_video_stream(self) -> Optional[av.VideoStream]:
+        return self.video_in
+
+    def get_audio_stream(self) -> Optional[av.AudioStream]:
+        return self.audio_in

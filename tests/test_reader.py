@@ -43,7 +43,7 @@ def mock_av_container():
     mock_packet_audio = MagicMock(spec=av.Packet)
     mock_packet_audio.stream = mock_audio_stream
     mock_packet_audio.stream.type = 'audio'
-    mock_packet_audio.decode.return_value = iter([mock_audio_frame_instance]) # Should yield actual Av.AudioFrame
+    mock_packet_audio.decode.return_value = iter([mock_audio_frame_instance])
 
     # The iterator for demux should yield these AvPacket objects
     mock_container.demux.return_value = iter([mock_packet_video, mock_packet_audio])
@@ -128,18 +128,19 @@ def test_read_frame_yields_video_and_audio(mock_av_container):
     reader.packets = iter([mock_video_packet, mock_audio_packet])
 
     # First call: Should get video frame
-    video_frame_np, audio_frame_av = reader.read_frame()
+    video_frame_np, audio_frame_av, pts = reader.read_frame()
     assert video_frame_np is not None
     assert isinstance(video_frame_np, np.ndarray)
     assert audio_frame_av is None
+    assert isinstance(pts, (float, int)) or pts is None
 
     # Second call: Should get audio packet
-    video_frame_np, audio_frame_av = reader.read_frame()
+    video_frame_np, audio_frame_av, pts = reader.read_frame()
     assert video_frame_np is None
-    assert isinstance(audio_frame_av, av.Packet) # Changed from av.AudioFrame
+    assert isinstance(audio_frame_av, av.Packet)
 
-    # Third call: Should get None, None (StopIteration from reader.packets)
-    video_frame_np, audio_frame_av = reader.read_frame()
+    # Third call: Should get None, None, None (StopIteration from reader.packets)
+    video_frame_np, audio_frame_av, pts = reader.read_frame()
     assert video_frame_np is None
     assert audio_frame_av is None
 

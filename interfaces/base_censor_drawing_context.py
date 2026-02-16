@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from detection_types import Detection
 
 class BaseCensorDrawingContext(ABC):
     """
@@ -12,13 +15,13 @@ class BaseCensorDrawingContext(ABC):
     """
 
     @abstractmethod
-    def apply_censor_effect(self, image_np: np.ndarray, bounding_box: Tuple[int, int, int, int], censor_type: str, settings: Dict) -> None:
+    def apply_censor_effect(self, image_np: np.ndarray, detection: 'Detection', censor_type: str, settings: Dict) -> None:
         """
-        Applies a generic censor effect to the specified bounding box on the image.
+        Applies a generic censor effect to the specified detection on the image.
 
         Args:
             image_np (np.ndarray): The image array to draw on.
-            bounding_box (Tuple[int, int, int, int]): The (x_min, y_min, x_max, y_max) of the area to censor.
+            detection (Detection): The Detection object containing bounding box and other info.
             censor_type (str): The type of censor to apply (e.g., 'box', 'pixelation').
             settings (Dict): Censor-specific settings (e.g., color for box, pixel_size for pixelation).
         """

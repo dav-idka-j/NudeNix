@@ -1,16 +1,23 @@
-from interfaces.base_frame_writer import BaseFrameWriter
 import av
 import sys
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
+from fractions import Fraction
+from interfaces.base_frame_writer import BaseFrameWriter
+from interfaces.base_frame_reader import BaseFrameReader
 
 class VideoFileWriter(BaseFrameWriter):
-    def __init__(self, output_destination: str, reader_instance, output_format: str = 'mp4',
-                 output_container_instance: Optional[av.container.OutputContainer] = None, 
-                 output_video_stream_instance: Optional[av.VideoStream] = None, 
-                 output_audio_stream_instance: Optional[av.AudioStream] = None):
+    def __init__(
+        self,
+        output_destination: str,
+        reader_instance: BaseFrameReader,
+        output_format: str = 'mp4',
+        output_container_instance: Optional[av.container.OutputContainer] = None,
+        output_video_stream_instance: Optional[av.VideoStream] = None,
+        output_audio_stream_instance: Optional[av.AudioStream] = None
+    ):
         self.output_destination = output_destination
         self.output_format = output_format
-        self.reader = reader_instance # Store the VideoFileReader instance (formerly VideoReader)
+        self.reader = reader_instance
 
         self.output_container = output_container_instance
         self.video_out = output_video_stream_instance
@@ -21,48 +28,44 @@ class VideoFileWriter(BaseFrameWriter):
             if self.output_container is None:
                 self.output_container = av.open(self.output_destination, 'w', format=self.output_format)
 
-            # --- Setup Output Video Stream ---
-            # Ensure reader_instance has video_in and output_video_stream_instance is not pre-injected
-            if self.reader.video_in and self.video_out is None:
+            video_in = self.reader.get_video_stream()
+            audio_in = self.reader.get_audio_stream()
+
+            if self.video_out is None:
+                fps = self.reader.get_fps()
+                # Use Fraction for rate to avoid floating point issues and satisfy PyAV
+                rate = Fraction(fps).limit_denominator()
+
                 if self.output_format == 'mp4':
-                    self.video_out = self.output_container.add_stream('h264', rate=self.reader.video_in.average_rate)
+                    self.video_out = self.output_container.add_stream('h264', rate=rate)
                 elif self.output_format == 'webm':
-                    self.video_out = self.output_container.add_stream('libvpx', rate=self.reader.video_in.average_rate)
+                    self.video_out = self.output_container.add_stream('libvpx', rate=rate)
                 else:
                     raise ValueError(f"Unsupported video output format: {self.output_format}")
 
-                self.video_out.width = self.reader.video_in.width
-                self.video_out.height = self.reader.video_in.height
-                self.video_out.pix_fmt = 'yuv420p' # Common for h264/libvpx
-                # print(f"Output video stream created ({self.output_format}): {self.video_out.name}") # Commented for cleaner output
-            elif self.reader.video_in and self.video_out is not None:
-                # print("Using injected output video stream.") # Commented for cleaner output
-                pass
+                width, height = self.reader.get_frame_size()
+                self.video_out.width = width
+                self.video_out.height = height
+                self.video_out.pix_fmt = 'yuv420p'
 
-
-            # --- Setup Output Audio Stream ---
-            # Ensure reader_instance has audio_in and output_audio_stream_instance is not pre-injected
-            if self.reader.audio_in and self.audio_out is None:
+            if audio_in and self.audio_out is None:
                 if self.output_format == 'mp4':
-                    # For MP4, remux AAC audio directly
-                    self.audio_out = self.output_container.add_stream_from_template(self.reader.audio_in)
-                    # print(f"Output audio stream (copied for MP4): {self.audio_out.name}") # Commented for cleaner output
+                    # For MP4, remux audio if template is available
+                    self.audio_out = self.output_container.add_stream_from_template(audio_in)
                 elif self.output_format == 'webm':
                     # For WebM, transcode to Opus
                     self.audio_out = self.output_container.add_stream('opus')
-                    # Make sure to set codec context parameters for the new stream
-                    self.audio_out.codec_context.rate = self.reader.get_audio_rate() # Use reader's get_audio_rate
-                    self.audio_out.codec_context.channels = self.reader.audio_in.channels
-                    self.audio_out.codec_context.layout = self.reader.get_audio_layout() # Use reader's get_audio_layout
-                    # print(f"Output audio stream (Opus for WebM): {self.audio_out.name}") # Commented for cleaner output
+                    self.audio_out.codec_context.rate = self.reader.get_audio_rate()
+                    self.audio_out.codec_context.channels = audio_in.channels
+                    self.audio_out.codec_context.layout = self.reader.get_audio_layout()
                 else:
                     raise ValueError(f"Unsupported audio output format: {self.output_format}")
-            elif self.reader.audio_in and self.audio_out is not None:
-                # print("Using injected output audio stream.") # Commented for cleaner output
-                pass
+
             return True
         except Exception as e:
             print(f"Error setting up output: {e}", file=sys.stderr)
+            import traceback
+            traceback.print_exc()
             return False
 
     def write_video_frame(self, frame: av.VideoFrame) -> None:
@@ -85,6 +88,17 @@ class VideoFileWriter(BaseFrameWriter):
             if packet.dts is None:
                 return
             packet.stream = self.audio_out
+
+            # Manually rescale timestamps to output stream timebase
+            # Ensure both timebases are available before rescaling
+            if packet.time_base is not None and self.audio_out.time_base is not None:
+                if packet.pts is not None:
+                    packet.pts = int(packet.pts * packet.time_base / self.audio_out.time_base)
+                if packet.dts is not None:
+                    packet.dts = int(packet.dts * packet.time_base / self.audio_out.time_base)
+                if packet.duration is not None:
+                    packet.duration = int(packet.duration * packet.time_base / self.audio_out.time_base)
+
             self.output_container.mux(packet)
         elif self.output_format == 'webm':
             # Transcode audio
@@ -99,12 +113,35 @@ class VideoFileWriter(BaseFrameWriter):
         if self.audio_out and self.output_format == 'webm': # Only flush audio if transcoded
             for packet in self.audio_out.encode(None):
                 self.output_container.mux(packet)
-        # print("Encoders flushed.") # Commented for cleaner output
 
     def close(self) -> None:
         if self.output_container:
-            self.output_container.close()
-            # print("Output container closed.") # Commented for cleaner output
+            try:
+                self.output_container.close()
+            except Exception as e:
+                print(f"Error closing output container: {e}", file=sys.stderr)
         self.output_container = None
         self.video_out = None
         self.audio_out = None
+
+    def get_fps(self) -> float:
+        """Returns the FPS from the reader."""
+        return self.reader.get_fps()
+
+    def get_frame_size(self) -> Tuple[int, int]:
+        """Returns the frame size from the reader."""
+        return self.reader.get_frame_size()
+
+    def get_audio_layout(self) -> Optional[av.AudioLayout]:
+        """Returns the audio layout from the reader."""
+        return self.reader.get_audio_layout()
+
+    def get_audio_rate(self) -> Optional[int]:
+        """Returns the audio rate from the reader."""
+        return self.reader.get_audio_rate()
+
+    def get_video_time_base(self) -> Optional[Fraction]:
+        """Returns the time base of the output video stream."""
+        if self.video_out:
+            return self.video_out.time_base
+        return None
