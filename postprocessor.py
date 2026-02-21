@@ -1,9 +1,11 @@
 import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
+
+from detection_types import Detection
 
 class BoxClusterer:
     """
-    Clusters closely located detection boxes of the same class into a single, larger bounding box.
+    Clusters closely located Detection objects of the same class into a single, larger bounding box.
     """
     def __init__(self, max_distance: float):
         """
@@ -15,121 +17,113 @@ class BoxClusterer:
         """
         self.max_distance = max_distance
 
-    def _boxes_distance(self, box1: List[float], box2: List[float]) -> float:
+    def _boxes_distance(self, det1: Detection, det2: Detection) -> float:
         """
-        Calculates the Euclidean distance between the closest sides of two bounding boxes (AABB distance).
+        Calculates the Euclidean distance between the closest sides of two Detection objects.
         """
-        x1, y1, w1, h1 = box1
-        x2, y2, w2, h2 = box2
-
-        # Convert to [x_min, y_min, x_max, y_max] format
-        box1_xmin, box1_ymin, box1_xmax, box1_ymax = x1, y1, x1 + w1, y1 + h1
-        box2_xmin, box2_ymin, box2_xmax, box2_ymax = x2, y2, x2 + w2, y2 + h2
+        x1_min, y1_min, x1_max, y1_max = det1.x1(), det1.y1(), det1.x2(), det1.y2()
+        x2_min, y2_min, x2_max, y2_max = det2.x1(), det2.y1(), det2.x2(), det2.y2()
 
         # Calculate horizontal distance
-        if box1_xmax < box2_xmin: # box1 is to the left of box2
-            dx = box2_xmin - box1_xmax
-        elif box2_xmax < box1_xmin: # box2 is to the left of box1
-            dx = box1_xmin - box2_xmax
+        if x1_max < x2_min: # det1 is to the left of det2
+            dx = x2_min - x1_max
+        elif x2_max < x1_min: # det2 is to the left of det1
+            dx = x1_min - x2_max
         else: # boxes overlap horizontally
             dx = 0
 
         # Calculate vertical distance
-        if box1_ymax < box2_ymin: # box1 is above box2
-            dy = box2_ymin - box1_ymax
-        elif box2_ymax < box1_ymin: # box2 is above box1
-            dy = box1_ymin - box2_ymax
+        if y1_max < y2_min: # det1 is above det2
+            dy = y2_min - y1_max
+        elif y2_max < y1_min: # det2 is above det1
+            dy = y1_min - y2_max
         else: # boxes overlap vertically
             dy = 0
 
         return np.sqrt(dx*dx + dy*dy)
 
 
-    def _merge_boxes(self, boxes: List[List[float]], scores: List[float]) -> Dict:
+    def _merge_detections(self, detections_to_merge: List[Detection]) -> Detection:
         """
-        Merges a list of boxes and their scores into a single new detection dictionary.
+        Merges a list of Detection objects into a single new Detection object.
         The merged box is an Axis-Aligned Bounding Box (AABB) encompassing all merged boxes.
-        The score is the maximum score among the merged boxes.
+        The score is the maximum score among the merged detections.
         """
-        if not boxes:
+        if not detections_to_merge:
             return None
 
-        # Convert [x, y, w, h] to [x_min, y_min, x_max, y_max] for easier merging
-        x_min_coords = [b[0] for b in boxes]
-        y_min_coords = [b[1] for b in boxes]
-        x_max_coords = [b[0] + b[2] for b in boxes]
-        y_max_coords = [b[1] + b[3] for b in boxes]
+        x_min_coords = [det.x1() for det in detections_to_merge]
+        y_min_coords = [det.y1() for det in detections_to_merge]
+        x_max_coords = [det.x2() for det in detections_to_merge]
+        y_max_coords = [det.y2() for det in detections_to_merge]
 
         merged_x_min = min(x_min_coords)
         merged_y_min = min(y_min_coords)
         merged_x_max = max(x_max_coords)
         merged_y_max = max(y_max_coords)
 
-        # Convert back to [x, y, w, h]
-        merged_box = [
-            merged_x_min,
-            merged_y_min,
-            merged_x_max - merged_x_min,
-            merged_y_max - merged_y_min,
+        merged_box_raw = [
+            float(merged_x_min),
+            float(merged_y_min),
+            float(merged_x_max - merged_x_min),
+            float(merged_y_max - merged_y_min),
         ]
 
-        # TODO: Perhaps we should use the average here?
-        merged_score = max(scores) # For simplicity, take the max score
+        merged_score = max([det.score() for det in detections_to_merge])
 
-        # Assume all boxes in the merge group have the same class
+        # Assume all detections in the merge group have the same class
         # (This is ensured by grouping by class before clustering)
-        return {"box": merged_box, "score": merged_score, "class": None} # Class will be set by caller
+        # Create a raw dictionary first, then wrap it in a Detection object
+        merged_raw_detection = {
+            "box": merged_box_raw,
+            "score": merged_score,
+            "class": detections_to_merge[0].label() # Take class from the first detection
+        }
+        return Detection(merged_raw_detection)
 
-    def cluster_boxes(self, detections: List[Dict]) -> List[Dict]:
+    def cluster_boxes(self, detections: List[Detection]) -> List[Detection]:
         """
         Clusters detected boxes based on class and proximity.
 
         Args:
-            detections: A list of detection dictionaries, each with at least 'box', 'score', and 'class'.
+            detections: A list of Detection objects.
 
         Returns:
-            A new list of detection dictionaries with clustered boxes.
+            A new list of Detection objects with clustered boxes.
         """
         if not detections:
             return []
 
-        clustered_detections = []
+        clustered_detections_list: List[Detection] = []
 
         # Group detections by class
-        detections_by_class = {}
+        detections_by_class: Dict[str, List[Detection]] = {}
         for det in detections:
-            det_class = det["class"]
+            det_class = det.label()
             if det_class not in detections_by_class:
                 detections_by_class[det_class] = []
             detections_by_class[det_class].append(det)
 
         for det_class, dets_for_class in detections_by_class.items():
-            # Use a list of booleans to track if a detection has been clustered
             is_clustered = [False] * len(dets_for_class)
 
             for i, det_i in enumerate(dets_for_class):
                 if is_clustered[i]:
                     continue
 
-                # Start a new cluster
-                current_cluster_boxes = [det_i["box"]]
-                current_cluster_scores = [det_i["score"]]
+                current_cluster: List[Detection] = [det_i]
                 is_clustered[i] = True
 
-                # Find other boxes to merge into this cluster
                 for j, det_j in enumerate(dets_for_class):
                     if is_clustered[j]:
                         continue
 
-                    if self._boxes_distance(det_i["box"], det_j["box"]) <= self.max_distance:
-                        current_cluster_boxes.append(det_j["box"])
-                        current_cluster_scores.append(det_j["score"])
-                        is_clustered[j] = True # Mark as clustered
+                    if self._boxes_distance(det_i, det_j) <= self.max_distance:
+                        current_cluster.append(det_j)
+                        is_clustered[j] = True
 
-                # Merge the boxes in the current cluster
-                merged_det = self._merge_boxes(current_cluster_boxes, current_cluster_scores)
+                merged_det = self._merge_detections(current_cluster)
                 if merged_det:
-                    merged_det["class"] = det_class # Assign the correct class
-                    clustered_detections.append(merged_det)
+                    clustered_detections_list.append(merged_det)
 
-        return clustered_detections
+        return clustered_detections_list

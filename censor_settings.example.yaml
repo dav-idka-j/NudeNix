@@ -28,7 +28,7 @@ all_labels:
       settings:
         thickness: 2 # Border thickness in pixels. Use -1 for a filled box.
         size_percent: 100 # Size of the box as a percentage of detection bounding box.
-        color: { r: 0, g: 0, b: 255 } # Color in BGR format (Red, Green, Blue).
+        color: { r: 0, g: 0, b: 255 } # Color in RGB format (Red, Green, Blue).
         display_label: true # Whether to display the detection label as text.
         display_score: true # Whether to display the detection score as text.
 

@@ -2,11 +2,13 @@ import pytest
 from unittest.mock import MagicMock, patch
 import numpy as np
 from detector import NsfwDetector
+from detection_types import Detection # Import the Detection wrapper class
 
 @pytest.fixture
 def mock_nude_detector():
     """Fixture for a mock NudeDetector instance."""
     mock = MagicMock()
+    # mock.detect.return_value should return raw dictionaries as NudeDetector does
     mock.detect.return_value = [
         {'box': [10, 10, 20, 20], 'score': 0.9, 'class': 'TEST_CLASS_1'},
         {'box': [30, 30, 40, 40], 'score': 0.7, 'class': 'TEST_CLASS_2'}
@@ -33,7 +35,7 @@ def test_nsfw_detector_init_creates_nude_detector():
 
 def test_detect_returns_detections(mock_nude_detector):
     """
-    Test that the detect method correctly returns detections from the NudeDetector.
+    Test that the detect method correctly returns Detection objects.
     """
     detector = NsfwDetector(nude_detector_instance=mock_nude_detector)
     frame = np.zeros((100, 100, 3), dtype=np.uint8)
@@ -41,11 +43,24 @@ def test_detect_returns_detections(mock_nude_detector):
     detections = detector.detect(frame)
 
     mock_nude_detector.detect.assert_called_once_with(frame)
-    expected_detections = [
-        {'box': [10, 10, 20, 20], 'score': 0.9, 'class': 'TEST_CLASS_1'},
-        {'box': [30, 30, 40, 40], 'score': 0.7, 'class': 'TEST_CLASS_2'}
-    ]
-    assert detections == expected_detections
+
+    assert len(detections) == 2
+    assert isinstance(detections[0], Detection)
+    assert detections[0].x() == 10
+    assert detections[0].y() == 10
+    assert detections[0].width() == 20
+    assert detections[0].height() == 20
+    assert detections[0].score() == 0.9
+    assert detections[0].label() == 'TEST_CLASS_1'
+
+    assert isinstance(detections[1], Detection)
+    assert detections[1].x() == 30
+    assert detections[1].y() == 30
+    assert detections[1].width() == 40
+    assert detections[1].height() == 40
+    assert detections[1].score() == 0.7
+    assert detections[1].label() == 'TEST_CLASS_2'
+
 
 def test_detect_with_no_detections(mock_nude_detector):
     """

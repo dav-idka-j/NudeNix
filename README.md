@@ -1,54 +1,35 @@
-# NudeNix: Video Censoring
+# NudeNix: NSFW Content Censoring
 
 ## Project Description
 
-A utility for real-time NSFW content detection and censoring for videos. Features a **modular architecture** that separates the core video processing logic from the output. This allows the processed video stream to be directed to various backends (e.g., a file, standard output for piping, or directly to media players like MPV or PyVidPlayer2) based on user needs.
+NudeNix is a powerful, modular utility for NSFW content detection and censoring. It can process existing video files or capture your screen live, applying censorship effects and outputting the result to a new file or a transparent, click-through system overlay.
 
 ## Technologies Used
 
-*   [NudeNet](https://github.com/notAI-tech/NudeNet?tab=readme-ov-file) for detection
-*   [PyAV](https://github.com/PyAV-Org/PyAV) for media handling
-*   [numpy](https://github.com/numpy/numpy) for numerical operations
-*   [OpenCV](https://opencv.org/) for image processing and censor effects
-*   [PyYAML](https://pyyaml.org/) for configuration file parsing
-*   [ImageHash](https://github.com/JohannesBuchner/imagehash) for perceptual image hashing
-*   [Pillow (PIL Fork)](https://python-pillow.org/) for image manipulation (used by ImageHash)
+*   [NudeNet](https://github.com/notAI-tech/NudeNet) for NSFW detection
+*   [PyQt5](https://www.riverbankcomputing.com/software/pyqt/) for the transparent, click-through screen overlay
+*   [PyAV](https://github.com/PyAV-Org/PyAV) for media handling and encoding
+*   [OpenCV](https://opencv.org/) for image processing
+*   [Pillow](https://python-pillow.org/) for screen capture
+*   [NumPy](https://numpy.org/) for numerical operations
+*   [ImageHash](https://github.com/JohannesBuchner/imagehash) for perceptual hashing
 
 ## Features
 
-*   **Modular Processing Pipeline:** Clear separation of input reading, NSFW detection, censoring logic, and output handling.
-*   **Real-time NSFW Detection:** Utilizes the `nudenet` library to analyze video frames.
-*   **Highly Configurable Censoring:** Settings defined in a `censor_settings.yaml` file allow granular control over:
-    *   `min_score` threshold for detections.
-    *   Enabling/disabling censoring per detection label.
-    *   Definition of censor stacks (e.g., `box`, blur, pixelate).
-    *   Per-censor settings.
-    *   Global defaults and per-label overrides.
-*   **Flexible Output Backends:**
-    *   **File Output:** Write processed video to a new file (e.g., MP4, WebM).
-    *   **MPV Streaming:** Stream processed video directly to the MPV player via `stdin` for real-time playback.
-    *   **PyVidPlayer2 Backend:** Stream to a `PyVidPlayer2` instance for embedded display.
-*   **Extensible Censor Types:** New censoring effects can be easily added by dropping new modules into the `censors/` directory.
-*   **Configurable NudeNet Model:** Use different NudeNet models and inference resolutions for varying performance and accuracy.
-
-## For Users
+*   **Real-Time Screen Censoring:** Capture any monitor and apply a transparent overlay that hides NSFW content in real-time.
+*   **Modular Architecture:** Easily switch between input sources (files, screen) and output destinations (files, overlay).
+*   **Highly Configurable:** Control detection sensitivity, censor types, and per-label settings via `censor_settings.yaml`.
+*   **Extensible:** Add new censor effects by simply dropping a Python file into the `censors/` directory.
 
 ### Prerequisites
 
-Before setting up and running NudeNix, ensure you have the following installed:
+**Python 3.8+:** The project is developed using Python.  Download from [python.org](https://www.python.org/downloads/).
 
-1.  **MPV Media Player:** The core video player (required for MPV streaming backend).
-    *   **Linux (Debian/Ubuntu):** `sudo apt-get install mpv`
-    *   **macOS:** `brew install mpv`
-    *   **Windows:** Download from the [MPV website](https://mpv.io/installation/).
-2.  **Python 3.8+:** The project is developed using Python.
-    *   Download from [python.org](https://www.python.org/downloads/).
-
-### Installation
+## Installation
 
 To use NudeNix, you can either install it directly from the source or use a pre-packaged executable.
 
-#### Option 1: Install from Source (Recommended for users familiar with Python)
+#### Option 1: Install from Source
 
 1.  **Clone the Repository:**
     ```bash
@@ -59,12 +40,12 @@ To use NudeNix, you can either install it directly from the source or use a pre-
 2.  **Create a Python Virtual Environment (Recommended):**
     ```bash
     python3 -m venv venv
-    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+    source venv/bin/activate  # Windows: venv\Scripts\activate
     ```
 
-3.  **Install Python Dependencies:**
+3.  **Install Dependencies:**
     ```bash
-    pip install av opencv-python numpy nudenet pyyaml imagehash pillow
+    pip install -r requirements.txt
     ```
 
 #### Option 2: Using a Pre-packaged Executable
@@ -73,59 +54,39 @@ Simply download and extract the `.zip` file. No Python installation or dependenc
 
 ### Usage
 
-The main processing script is `main_processor.py`. When using the source code, run it directly. If using a packaged executable, run the `NudeNix` executable.
+NudeNix uses a URI-based system for inputs and outputs.
 
-**General Command Structure:**
-
+**General Command:**
 ```bash
-python main_processor.py -i <input_video_path> [OPTIONS]
-# or for packaged executable:
-./NudeNix -i <input_video_path> [OPTIONS]
+python main.py -i <INPUT_URI> -o <OUTPUT_URI> [OPTIONS]
 ```
 
-**Key Arguments:**
+### URI Schemes
 
-*   `-i`, `--input <FILE_PATH>`: Path to the input video file (required).
-*   `-o`, `--output <FILE_PATH>`: Path to the output video file (required if `--output-type file`).
-*   `--output-type {file, mpv, pyvidplayer2}`: Destination for the processed video stream (`file` is default).
-*   `-f`, `--format {mp4, webm}`: Output video format (relevant if `--output-type file`; `mp4` is default).
-*   `-c`, `--config <FILE_PATH>`: Path to a custom `censor_settings.yaml` file.
-*   `--disable-image-hash`: Disable the image hashing optimization, overriding config.
-*   `--enable-image-hash-debug`: Enable image hash debug overlay (green/red/blue circles), overriding config.
-*   `--nudenet-model-path <FILE_PATH>`: Override Nudenet model path from config.
-*   `--nudenet-resolution <INT>`: Override Nudenet inference resolution from config.
+*   **Input (`-i`):**
+    *   `file://path/to/video.mp4`: Process an existing video.
+    *   `screen://1`: Capture monitor 1.
+*   **Output (`-o`):**
+    *   `file://path/to/output.mp4`: Save the censored result to a file.
+    *   `overlay://`: Display censorship as a transparent system overlay.
 
-**Examples:**
+### Examples
 
 ```bash
-# Process video and write to an MP4 file (default output-type and format)
-python main_processor.py -i test.mkv -o output.mp4
+# Live screen censoring with overlay
+python main.py -i screen://1 -o overlay://
 
-# Process video and save as a WebM file
-python main_processor.py --input test.mkv --output output.webm --format webm
+# Censoring a video file and saving to MP4
+python main.py -i file://input.mp4 -o file://censored.mp4
 
-# Stream processed video directly to MPV (MPV backend not yet implemented)
-# This will eventually launch MPV and pipe the video to it.
-# Currently, this will result in an error indicating not implemented.
-python main_processor.py -i /path/to/your/input_video.mp4 --output-type mpv
-
-# Use a custom configuration file
-python main_processor.py -i video.mp4 -o out.mp4 -c my_custom_settings.yaml
-
-# Disable image hashing optimization via CLI
-python main_processor.py -i video.mp4 -o out.mp4 --disable-image-hash
-
-# Enable image hash debug overlay (shows circles on frames)
-python main_processor.py -i video.mp4 -o out.mp4 --enable-image-hash-debug
-
-# Override Nudenet model and resolution
-python main_processor.py -i video.mp4 -o out.mp4 --nudenet-model-path custom_model.onnx --nudenet-resolution 640
+# Recording a censored screen capture
+python main.py -i screen://1 -o file://recording.mp4
 ```
 
 #### Censoring Configuration
 
 Censoring behavior is controlled by the `censor_settings.yaml` file. This YAML file defines global settings for all detection labels and allows for specific overrides per label. See `censor_settings.example.yaml`, is provided. **You should copy `censor_settings.example.yaml` to `censor_settings.yaml` and modify it.**  Customize `censor_settings.yaml` to define your desired censoring logic and place the file
- - next to your `main_processor.py` script (if running from source)
+ - next to your `main.py` script (if running from source)
  - or next to the `NudeNix` executable (if running a packaged version).
 
 #### Nudenet Model Configuration
@@ -168,7 +129,7 @@ This section details the censor types currently implemented and available for us
 *   **Settings:**
     *   `thickness` (integer, default: `2`): The thickness of the border in pixels. Set to `-1` to fill the entire box.
     *   `size_percent` (integer, default: `100`): The size of the box as a percentage of the detected bounding box (e.g., `90` for 90% of the original size).
-    *   `color` (object, default: `{r: 0, g: 0, b: 255}` - Red): The color of the box in BGR format. Example: `{r: 0, g: 255, b: 0}` for Green.
+    *   `color` (object, default: `{r: 0, g: 0, b: 255}` - Red): The color of the box in RGB format. Example: `{r: 0, g: 255, b: 0}` for Green.
     *   `display_label` (boolean, default: `true`): Whether to display the detection label as text above the box.
     *   `display_score` (boolean, default: `true`): Whether to display the detection score as text above the box.
 

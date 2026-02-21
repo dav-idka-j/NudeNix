@@ -1,25 +1,28 @@
 import cv2
 import numpy as np
+from typing import Tuple, Dict, Any
+
+from detection_types import Detection # Import Detection class
 
 class BoxCensor:
-    def __init__(self, settings):
+    """
+    Censor implementation that draws a colored box over the detected region,
+    with configurable size, color, thickness, and optional label/score display.
+    """
+    def __init__(self, settings: Dict[str, Any]):
+        self.settings = settings
         self.thickness = settings.get('thickness', 2)
         self.size_percent = settings.get('size_percent', 100)
-        color_dict = settings.get('color', {'r': 0, 'g': 0, 'b': 255}) # Default red
-        self.color = (color_dict['b'], color_dict['g'], color_dict['r']) # Convert to BGR for OpenCV
+
+        color_dict = settings.get('color', {'r': 0, 'g': 0, 'b': 255}) # Default blue
+        self.color = (color_dict['b'], color_dict['g'], color_dict['r'])
+
         self.display_label = settings.get('display_label', True)
         self.display_score = settings.get('display_score', True)
 
-    def apply(self, frame_ndarray: np.ndarray, detection: dict):
-        """
-        Applies a box censor effect to the given frame for a single detection.
+    def apply(self, image_np: np.ndarray, detection: Detection) -> None:
+        x_n, y_n, w_n, h_n = detection.x(), detection.y(), detection.width(), detection.height()
 
-        Args:
-            frame_ndarray (np.ndarray): The video frame as a NumPy array (RGB), modified in-place.
-            detection (dict): A single detection dictionary from NudeDetector.
-        """
-        x_n, y_n, w_n, h_n = detection['box']
-        
         # Adjust box size based on size_percent
         if self.size_percent != 100:
             scale = self.size_percent / 100.0
@@ -33,28 +36,31 @@ class BoxCensor:
         x2, y2 = int(x_n + w_n), int(y_n + h_n)
 
         # Ensure coordinates are within frame bounds
-        h, w, _ = frame_ndarray.shape
+        h, w, _ = image_np.shape
         x1, y1 = max(0, x1), max(0, y1)
         x2, y2 = min(w, x2), min(h, y2)
 
+        if x2 <= x1 or y2 <= y1:
+            return # Invalid or empty bounding box after adjustments
+
         # Draw box
-        cv2.rectangle(frame_ndarray, (x1, y1), (x2, y2), self.color, self.thickness)
+        cv2.rectangle(image_np, (x1, y1), (x2, y2), self.color, self.thickness)
 
         # Add text if enabled
         if self.display_label or self.display_score:
-            label = detection['class']
-            score = detection['score']
+            label_text = detection.label()
+            score_text = f"{detection.score():.2f}"
+
             text_parts = []
             if self.display_label:
-                text_parts.append(label)
+                text_parts.append(label_text)
             if self.display_score:
-                text_parts.append(f"{score:.2f}")
+                text_parts.append(score_text)
             text = ": ".join(text_parts)
 
             text_x = x1
             text_y = y1 - 10
-            if text_y < 0:
-                text_y = y1 + 20
+            if text_y < 10: # Ensure text is not drawn off-screen upwards
+                text_y = y1 + 20 # Draw below if not enough space above
 
-            cv2.putText(frame_ndarray, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-
+            cv2.putText(image_np, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
