@@ -58,6 +58,13 @@ labels:
           thickness: 10
           size_percent: 90
           color: { r: 0, g: 0, b: 255 }
+  ANUS_EXPOSED:
+    censors:
+      - type: blur
+        settings:
+          kernel_size: 15
+          sigma: 0
+          scale_with_detection_size: true
 
   FACE_FEMALE:
     enabled: false # Turn off detection for this label
