@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import numpy as np
 import av
-from screen_writer import ScreenWriter
+from output.screen_writer import ScreenWriter
 
 class TestScreenWriter(unittest.TestCase):
     def setUp(self):
@@ -16,8 +16,8 @@ class TestScreenWriter(unittest.TestCase):
             overlay_context=self.mock_context
         )
 
-    @patch('screen_writer.QApplication')
-    @patch('screen_writer.OverlayWindow')
+    @patch('output.screen_writer.QApplication')
+    @patch('output.screen_writer.OverlayWindow')
     def test_open_success(self, MockWindow, MockApp):
         MockApp.instance.return_value = None
         self.writer.get_video_time_base = MagicMock(return_value=Fraction(1, 30))

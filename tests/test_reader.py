@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import MagicMock, patch, call
 import av
 import numpy as np
-from video_file_reader import VideoFileReader
+from input.video_file_reader import VideoFileReader
 
 @pytest.fixture
 def mock_av_container():
@@ -66,7 +66,7 @@ def test_video_file_reader_init_creates_container():
     reader = VideoFileReader("dummy_path.mp4")
     assert reader.input_container is None
 
-@patch('video_file_reader.av.open')
+@patch('input.video_file_reader.av.open')
 def test_open_success_with_av_open(mock_av_open, mock_av_container):
     """Test successful opening when av.open is called internally."""
     mock_av_open.return_value = mock_av_container
@@ -79,7 +79,7 @@ def test_open_success_with_av_open(mock_av_open, mock_av_container):
     mock_av_container.demux.assert_called_once_with(mock_av_container.streams.video[0], mock_av_container.streams.audio[0])
 
 
-@patch('video_file_reader.av.open')
+@patch('input.video_file_reader.av.open')
 def test_open_failure_invalid_path(mock_av_open):
     """Test open failure with an invalid file path."""
     mock_av_open.side_effect = Exception("File not found")
@@ -96,7 +96,7 @@ def test_open_success_with_injected_container(mock_av_container):
 
     assert reader.open() is True
     # av.open should not be called if container is injected
-    with patch('video_file_reader.av.open') as mock_av_open_inner:
+    with patch('input.video_file_reader.av.open') as mock_av_open_inner:
         mock_av_open_inner.assert_not_called()
 
     assert reader.video_in == mock_av_container.streams.video[0]

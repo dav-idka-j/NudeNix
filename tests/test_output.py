@@ -4,7 +4,7 @@ from fractions import Fraction
 import av
 import numpy as np
 from video_file_writer import VideoFileWriter
-from video_file_reader import VideoFileReader # Import VideoFileReader for mocking
+from input.video_file_reader import VideoFileReader # Import VideoFileReader for mocking
 
 
 @pytest.fixture

@@ -8,7 +8,7 @@ import av
 import argparse
 
 from main import MainProcessor, main, parse_args
-from video_file_reader import VideoFileReader
+from input.video_file_reader import VideoFileReader
 from detector import NsfwDetector
 from censor import CensorProcessor
 from video_file_writer import VideoFileWriter
@@ -16,8 +16,8 @@ from config_loader import ConfigLoader
 from postprocessor import BoxClusterer
 from preprocess_detector import ImageHashDetector
 from censor_drawing_contexts.in_place_drawing_context import InPlaceDrawingContext
-from screen_reader import ScreenCaptureReader
-from screen_writer import ScreenWriter
+from input.screen_reader import ScreenCaptureReader
+from output.screen_writer import ScreenWriter
 
 
 @pytest.fixture

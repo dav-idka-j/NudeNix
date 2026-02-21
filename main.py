@@ -9,12 +9,12 @@ import time
 from fractions import Fraction
 from urllib.parse import urlparse
 
-from video_file_reader import VideoFileReader
-from screen_reader import ScreenCaptureReader
+from input.video_file_reader import VideoFileReader
+from input.screen_reader import ScreenCaptureReader
 from detector import NsfwDetector
 from censor import CensorProcessor
 from video_file_writer import VideoFileWriter
-from screen_writer import ScreenWriter
+from output.screen_writer import ScreenWriter
 from config_loader import ConfigLoader
 from postprocessor import BoxClusterer
 from preprocess_detector import ImageHashDetector

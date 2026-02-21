@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 import numpy as np
 from PIL import Image
-from screen_reader import ScreenCaptureReader
+from input.screen_reader import ScreenCaptureReader
 
 class TestScreenCaptureReader(unittest.TestCase):
 
