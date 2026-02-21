@@ -124,6 +124,28 @@ class TestPixelationCensor:
         downscale_call_fast = mock_resize.call_args_list[0]
         assert downscale_call_fast.kwargs['interpolation'] == cv2.INTER_NEAREST
 
+class TestBlurCensor:
+    def test_blur_censor_basic(self):
+        """Test the blur censor with basic settings."""
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        # Create a checkerboard pattern to make blurring noticeable
+        frame[0:50, 0:50, :] = 255
+        frame[50:100, 50:100, :] = 255
+        original_frame = frame.copy()
+
+        detection_obj = Detection({'class': 'test', 'score': 1.0, 'box': [20, 20, 60, 60]})
+        settings = {'kernel_size': 15, 'scale_with_detection_size': False}
+
+        censors_registry = CensorsRegistry()
+        drawing_context = InPlaceDrawingContext(censors_registry)
+        drawing_context.apply_censor_effect(frame, detection_obj, 'blur', settings)
+
+        # The ROI should be changed
+        roi = frame[20:80, 20:80]
+        assert not np.array_equal(roi, original_frame[20:80, 20:80])
+        # The edges of the pattern should be smoothed
+        assert not np.all(np.logical_or(roi == 0, roi == 255))
+
 class TestGenericCensorBehavior:
     def test_unsupported_censor_type(self):
         """Test InPlaceDrawingContext with an unsupported censor type."""

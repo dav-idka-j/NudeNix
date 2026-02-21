@@ -1,7 +1,5 @@
 # NudeNix: NSFW Content Censoring
 
-## Project Description
-
 NudeNix is a powerful, modular utility for NSFW content detection and censoring. It can process existing video files or capture your screen live, applying censorship effects and outputting the result to a new file or a transparent, click-through system overlay.
 
 ## Technologies Used
@@ -23,7 +21,7 @@ NudeNix is a powerful, modular utility for NSFW content detection and censoring.
 
 ### Prerequisites
 
-**Python 3.8+:** The project is developed using Python.  Download from [python.org](https://www.python.org/downloads/).
+**Python 3.10+:** The project is developed using Python.  Download from [python.org](https://www.python.org/downloads/).
 
 ## Installation
 
@@ -146,6 +144,15 @@ This section details the censor types currently implemented and available for us
         *   `'accurate'`: Uses `cv2.INTER_AREA` for downscaling, which provides a good average color for the block.
         *   `'fast'`: Uses `cv2.INTER_NEAREST` for downscaling, which samples the center pixel's color, but is less accurate.
     *   `shape` (string, default: `'square'`): The shape of the pixelation blocks. Currently only `'square'` is supported.
+
+##### 3. `blur` Censor
+
+*   **Type:** `blur`
+*   **Description:** Applies a (Gaussian) blur effect to the detected region.
+*   **Settings:**
+    *   `kernel_size` (integer, default: `15`): Defines how many surrounding pixels to incorporate in the averaging process. A higher value will result in a stronger blur.
+    *   `sigma` (integer, default: `0`): Determines the standard deviation in the applied Gaussian function. A higher value will result in a stronger blur.
+    *   `scale_with_detection_size` (boolean, default: `true`): If `true`, the `strength` is interpreted as a percentage of the detected region's smallest dimension, making the blur adaptive.
 
 ### Supported Nudenet Labels
 
