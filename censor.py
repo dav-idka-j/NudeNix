@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Tuple
 
 from config_loader import ConfigLoader
 from interfaces.base_censor_drawing_context import BaseCensorDrawingContext
-from detection_types import Detection # Import the Detection wrapper class
+from detection_types import Detection
 
 class CensorProcessor:
     def __init__(self, config_loader: ConfigLoader, drawing_context: BaseCensorDrawingContext):
@@ -52,8 +52,8 @@ class CensorProcessor:
                 # Delegate the drawing of the censor effect to the drawing_context
                 self.drawing_context.apply_censor_effect(
                     image_np=frame_ndarray,
-                    detection=detection, # Pass the full detection object
+                    detection=detection,
                     censor_type=censor_type,
-                    settings=censor_settings # Pass settings to the drawing context
+                    settings=censor_settings
                 )
         return frame_ndarray

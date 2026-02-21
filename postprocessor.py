@@ -71,13 +71,10 @@ class BoxClusterer:
 
         merged_score = max([det.score() for det in detections_to_merge])
 
-        # Assume all detections in the merge group have the same class
-        # (This is ensured by grouping by class before clustering)
-        # Create a raw dictionary first, then wrap it in a Detection object
         merged_raw_detection = {
             "box": merged_box_raw,
             "score": merged_score,
-            "class": detections_to_merge[0].label() # Take class from the first detection
+            "class": detections_to_merge[0].label()
         }
         return Detection(merged_raw_detection)
 

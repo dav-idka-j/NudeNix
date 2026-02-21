@@ -1,9 +1,7 @@
 import os
 import sys
 import importlib
-from typing import Dict, Type, Any
-
-# No longer importing BaseCensor
+from typing import Dict, Type, Any, Tuple
 
 class CensorsRegistry:
     """
@@ -11,11 +9,11 @@ class CensorsRegistry:
     It discovers censor classes in the 'censors' directory and registers them.
     """
     def __init__(self):
-        self._censors: Dict[str, Type[Any]] = {} # Type hints updated
+        self._censors: Dict[str, Type[Any]] = {}
         self.base_path = self._get_base_path()
         self.censors_dir = os.path.join(self.base_path, 'censors')
         self._load_censor_modules()
-        self.cache: Dict[Tuple[str, str], obj] = {}
+        self.cache: Dict[Tuple[str, str], Any] = {}
 
     def _get_base_path(self) -> str:
         """

@@ -4,7 +4,7 @@ import numpy as np
 from nudenet import NudeDetector
 from typing import List
 
-from detection_types import Detection # Import the Detection wrapper class
+from detection_types import Detection
 
 class NsfwDetector:
     def __init__(self, model_path=None, inference_resolution=320, nude_detector_instance=None):

@@ -57,7 +57,7 @@ class ImageHashDetector:
             self.last_known_detections = detections
             self.current_frame_skip_count = 0
             # Blue circle for forced detection run
-            self._draw_debug_overlay(image_np, (0, 0, 255)) # blue
+            self._draw_debug_overlay(image_np, (0, 0, 255))
             return detections
         else:
             # Compare hashes
@@ -66,7 +66,7 @@ class ImageHashDetector:
                 # Hashes are similar, reuse last detections
                 self.current_frame_skip_count += 1
                 # Green circle for skipped detection
-                self._draw_debug_overlay(image_np, (0, 255, 0)) # green
+                self._draw_debug_overlay(image_np, (0, 255, 0))
                 return self.last_known_detections
             else:
                 # Hashes are different, run new detection
@@ -75,5 +75,5 @@ class ImageHashDetector:
                 self.last_known_detections = detections
                 self.current_frame_skip_count = 0
                 # Red circle for actual detection run
-                self._draw_debug_overlay(image_np, (255, 0, 0)) # red
+                self._draw_debug_overlay(image_np, (255, 0, 0))
                 return detections
