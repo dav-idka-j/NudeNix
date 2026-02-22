@@ -21,18 +21,31 @@ from preprocess_detector import ImageHashDetector
 from censor_drawing_contexts.in_place_drawing_context import InPlaceDrawingContext
 from censor_drawing_contexts.overlay_drawing_context import OverlayDrawingContext
 from censors_registry import CensorsRegistry
+from statistics import (
+    PerformanceStatistics,
+    PipelineSummaryModule,
+    ReaderReportModule,
+    OutputReportModule
+)
 
 logger = logging.getLogger(__name__)
 
 class MainProcessor:
     def __init__(self, reader: VideoFileReader | ScreenCaptureReader, detector: NsfwDetector | ImageHashDetector, censor_processor: CensorProcessor,
-                 writer: VideoFileWriter | ScreenWriter, config_loader: ConfigLoader, box_clusterer: BoxClusterer = None):
+                 writer: VideoFileWriter | ScreenWriter, config_loader: ConfigLoader, box_clusterer: BoxClusterer = None,
+                 stats: PerformanceStatistics = None):
         self.reader = reader
         self.detector = detector
         self.censor_processor = censor_processor
         self.writer = writer
         self.config_loader = config_loader
         self.box_clusterer = box_clusterer
+        self.stats = stats or PerformanceStatistics(enabled=False)
+
+        if self.stats.enabled:
+            self.stats.register_module(PipelineSummaryModule(), priority=0)
+            self.stats.register_module(ReaderReportModule(), priority=10)
+            self.stats.register_module(OutputReportModule(), priority=50)
 
     def run(self):
         if not self.reader.open():
@@ -42,24 +55,34 @@ class MainProcessor:
             sys.exit(1)
 
         try:
+            self.stats.start()
             frame_count = 0
 
-            video_frame_np, audio_packet, pts = self.reader.read_frame()
+            with self.stats.timer('reader'):
+                video_frame_np, audio_packet, pts = self.reader.read_frame()
 
             while video_frame_np is not None or audio_packet is not None:
                 if audio_packet is not None:
                     if isinstance(self.writer, VideoFileWriter):
-                        self.writer.write_audio_packet(audio_packet)
+                        with self.stats.timer('output'):
+                            self.writer.write_audio_packet(audio_packet)
 
                 if video_frame_np is not None:
+                    self.stats.increment_counter('frame_count')
                     frame_count += 1
 
-                    detections = self.detector.detect(video_frame_np)
+                    # Detect NSFW content
+                    detections = self.detector.detect(video_frame_np, stats=self.stats)
 
                     if self.box_clusterer:
                         detections = self.box_clusterer.cluster_boxes(detections)
 
-                    processed_img = self.censor_processor.apply_censorship(video_frame_np, detections)
+                    if detections:
+                        self.stats.increment_counter('frames_with_censorship')
+
+                    # Apply censorship
+                    with self.stats.timer('censors_total'):
+                        processed_img = self.censor_processor.apply_censorship(video_frame_np, detections, stats=self.stats)
 
                     # Convert back to RGB for writing/display
                     processed_img_rgb = cv2.cvtColor(processed_img, cv2.COLOR_BGR2RGB)
@@ -77,12 +100,16 @@ class MainProcessor:
                         processed_av_frame.time_base = tb
                         processed_av_frame.pts = frame_count - 1
 
-                    self.writer.write_video_frame(processed_av_frame)
+                    with self.stats.timer('output'):
+                        self.writer.write_video_frame(processed_av_frame)
 
-                video_frame_np, audio_packet, pts = self.reader.read_frame()
+                with self.stats.timer('reader'):
+                    video_frame_np, audio_packet, pts = self.reader.read_frame()
 
             self.writer.flush_encoders()
+            self.stats.stop()
             print(f"Processing complete. Total frames processed: {frame_count}")
+            self.stats.print_report()
 
         except Exception as e:
             logger.error(f"An error occurred during processing: {e}", exc_info=True)
@@ -113,6 +140,7 @@ def main(args):
     print(f"Output: {args.output}")
 
     config_loader = ConfigLoader()
+    stats = PerformanceStatistics(enabled=args.performance_statistics)
 
     nudenet_config = config_loader.get_nudenet_settings()
     model_path = nudenet_config.get('model_path')
@@ -124,9 +152,9 @@ def main(args):
         max_distance = clustering_config.get('max_distance', 50.0)
         box_clusterer = BoxClusterer(max_distance=max_distance)
 
-    nsfw_detector_instance = NsfwDetector(model_path=model_path, inference_resolution=inference_resolution)
+    nsfw_detector_instance = NsfwDetector(model_path=model_path, inference_resolution=inference_resolution, stats=stats)
     image_hash_config = config_loader.get_image_hash_settings()
-    detector_to_pass = ImageHashDetector(nsfw_detector_instance, image_hash_config)
+    detector_to_pass = ImageHashDetector(nsfw_detector_instance, image_hash_config, stats=stats)
 
     censors_registry = CensorsRegistry()
 
@@ -160,10 +188,10 @@ def main(args):
         print(f"Error: Unknown output scheme '{output_uri.scheme}'.", file=sys.stderr)
         sys.exit(1)
 
-    censor_processor = CensorProcessor(config_loader, drawing_context)
+    censor_processor = CensorProcessor(config_loader, drawing_context, stats=stats)
 
     try:
-        processor = MainProcessor(reader, detector_to_pass, censor_processor, writer, config_loader, box_clusterer)
+        processor = MainProcessor(reader, detector_to_pass, censor_processor, writer, config_loader, box_clusterer, stats=stats)
         processor.run()
 
         # If processing is successful and a temporary file was used, rename it
@@ -220,6 +248,8 @@ def parse_args(args):
 
     parser.add_argument('--force-overwrite', '-y', action='store_true',
                         help='Automatically confirm overwriting if output path is same as input.')
+    parser.add_argument('--performance-statistics', action='store_true',
+                        help='Collect and report performance statistics.')
 
     parsed_args = parser.parse_args(args)
 

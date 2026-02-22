@@ -81,7 +81,18 @@ python main.py -i file://input.mp4 -o file://censored.mp4
 python main.py -i screen://1 -o file://recording.mp4
 ```
 
-#### Censoring Configuration
+### Performance Statistics
+
+NudeNix includes an optional, pluggable statistics system to help analyze processing bottlenecks and optimization efficiency. To enable it, add the `--performance-statistics` flag to any command.
+
+**Example:**
+```bash
+python main.py -i file://input.mp4 -o file://censored.mp4 --performance-statistics
+```
+
+When enabled, a performance report will be printed upon exit.
+
+### Censoring Configuration
 
 Censoring behavior is controlled by the `censor_settings.yaml` file. This YAML file defines global settings for all detection labels and allows for specific overrides per label. See `censor_settings.example.yaml`, is provided. **You should copy `censor_settings.example.yaml` to `censor_settings.yaml` and modify it.**  Customize `censor_settings.yaml` to define your desired censoring logic and place the file
  - next to your `main.py` script (if running from source)

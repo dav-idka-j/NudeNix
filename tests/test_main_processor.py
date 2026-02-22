@@ -131,7 +131,7 @@ def test_main_processor_run_with_video_frames(create_main_processor):
     processor.reader.open.assert_called_once()
     processor.writer.open.assert_called_once()
     assert processor.reader.read_frame.call_count == 2
-    processor.detector.detect.assert_called_once_with(test_frame_np)
+    processor.detector.detect.assert_called_once_with(test_frame_np, stats=ANY)
 
     expected_detections_for_censor = detections
     processor.box_clusterer.cluster_boxes.assert_called_once_with(detections)
@@ -139,7 +139,8 @@ def test_main_processor_run_with_video_frames(create_main_processor):
 
     processor.censor_processor.apply_censorship.assert_called_once_with(
         test_frame_np,
-        expected_detections_for_censor
+        expected_detections_for_censor,
+        stats=ANY
     )
     processor.writer.write_video_frame.assert_called_once()
     processor.writer.flush_encoders.assert_called_once()

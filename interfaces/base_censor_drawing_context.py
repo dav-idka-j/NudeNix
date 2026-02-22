@@ -15,7 +15,7 @@ class BaseCensorDrawingContext(ABC):
     """
 
     @abstractmethod
-    def apply_censor_effect(self, image_np: np.ndarray, detection: 'Detection', censor_type: str, settings: Dict) -> None:
+    def apply_censor_effect(self, image_np: np.ndarray, detection: 'Detection', censor_type: str, settings: Dict, stats=None) -> None:
         """
         Applies a generic censor effect to the specified detection on the image.
 
@@ -24,5 +24,6 @@ class BaseCensorDrawingContext(ABC):
             detection (Detection): The Detection object containing bounding box and other info.
             censor_type (str): The type of censor to apply (e.g., 'box', 'pixelation').
             settings (Dict): Censor-specific settings (e.g., color for box, pixel_size for pixelation).
+            stats (PerformanceStatistics, optional): Statistics object to record metrics.
         """
         pass

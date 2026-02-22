@@ -72,3 +72,6 @@ class PixelationCensor:
 
         # Place the pixelated ROI back into the original image
         image_np[y_min:y_max, x_min:x_max] = pixelated_roi
+
+    def get_type(self) -> str:
+        return "pixelation"

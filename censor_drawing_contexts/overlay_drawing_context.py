@@ -17,7 +17,7 @@ class OverlayDrawingContext(BaseCensorDrawingContext):
         self.censors_registry = censors_registry
         self.commands: List[Dict[str, Any]] = []
 
-    def apply_censor_effect(self, image_np: np.ndarray, detection: 'Detection', censor_type: str, settings: Dict) -> None:
+    def apply_censor_effect(self, image_np: np.ndarray, detection: 'Detection', censor_type: str, settings: Dict, stats=None) -> None:
         """
         Extracts the ROI, applies the censor, calculates the difference to create an alpha mask,
         and stores the resulting RGBA patch.
@@ -50,7 +50,11 @@ class OverlayDrawingContext(BaseCensorDrawingContext):
                 'score': detection.score()
             })
 
-            censor_instance.apply(roi_censored, roi_detection)
+            if stats:
+                with stats.time_censor(censor_type):
+                    censor_instance.apply(roi_censored, roi_detection)
+            else:
+                censor_instance.apply(roi_censored, roi_detection)
 
             # Create Alpha Mask
             # Any pixel that changed in any channel (B, G, or R) is considered "censor content"
