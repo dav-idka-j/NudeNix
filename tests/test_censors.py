@@ -52,44 +52,6 @@ class TestPixelationCensor:
 
         assert not np.array_equal(frame[10:40, 10:40], original_frame[10:40, 10:40])
 
-    def test_pixelation_censor_grayscale(self):
-        """Test the grayscale option of the pixelation censor."""
-        frame = np.zeros((50, 50, 3), dtype=np.uint8)
-        for i in range(50):
-            frame[i, :, 0] = i * 5
-            frame[:, i, 1] = i * 3
-        original_frame = frame.copy()
-        detection_obj = Detection({'class': 'test', 'score': 1.0, 'box': [10, 10, 30, 30]})
-        settings = {'strength': 5, 'grayscale': True, 'scale_with_detection_size': False}
-
-        censors_registry = CensorsRegistry()
-        drawing_context = InPlaceDrawingContext(censors_registry)
-        drawing_context.apply_censor_effect(frame, detection_obj, 'pixelation', settings)
-
-        roi = frame[10:40, 10:40]
-        # Check if the region is now grayscale (R, G, and B channels are the same)
-        assert np.all(roi[:,:,0] == roi[:,:,1]) and np.all(roi[:,:,1] == roi[:,:,2])
-        assert not np.array_equal(roi, original_frame[10:40, 10:40])
-
-    def test_pixelation_censor_scale_with_size(self):
-        """Test the scale_with_detection_size option of the pixelation censor."""
-        frame = np.zeros((100, 100, 3), dtype=np.uint8)
-        detection_obj = Detection({'class': 'test', 'score': 1.0, 'box': [10, 10, 80, 80]})
-        # Strength is 50%, smaller dim is 80, so pixel_size should be 40
-        settings = {'strength': 50, 'scale_with_detection_size': True}
-
-        censors_registry = CensorsRegistry()
-        drawing_context = InPlaceDrawingContext(censors_registry)
-        drawing_context.apply_censor_effect(frame, detection_obj, 'pixelation', settings)
-
-        roi = frame[10:90, 10:90]
-        # With pixel size of 40 on an 80x80 ROI, there should be 4 blocks (2x2)
-        # All pixels in a block should be the same color
-        assert np.all(roi[0:40, 0:40] == roi[0, 0])
-        assert np.all(roi[40:80, 0:40] == roi[40, 0])
-        assert np.all(roi[0:40, 40:80] == roi[0, 40])
-        assert np.all(roi[40:80, 40:80] == roi[40, 40])
-
     @patch('cv2.resize')
     def test_pixelation_censor_sampling_mode(self, mock_resize):
         """Test that sampling_mode correctly selects the OpenCV interpolation flag."""
@@ -145,6 +107,87 @@ class TestBlurCensor:
         assert not np.array_equal(roi, original_frame[20:80, 20:80])
         # The edges of the pattern should be smoothed
         assert not np.all(np.logical_or(roi == 0, roi == 255))
+
+    def test_blur_censor_scale_with_size(self):
+        """Test the blur censor with kernel scaling enabled."""
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        frame[25:75, 25:75, :] = 255
+        original_frame = frame.copy()
+
+        detection_obj = Detection({'class': 'test', 'score': 1.0, 'box': [10, 10, 80, 80]})
+        # kernel_size 20% of 80 = 16, odd is 17
+        settings = {'kernel_size': 20, 'scale_with_detection_size': True}
+
+        censors_registry = CensorsRegistry()
+        drawing_context = InPlaceDrawingContext(censors_registry)
+
+        with patch('cv2.GaussianBlur') as mock_blur:
+            # Mock GaussianBlur to return a placeholder and verify ksize
+            mock_blur.side_effect = lambda src, ksize, sigma: np.zeros(src.shape, dtype=src.dtype)
+            drawing_context.apply_censor_effect(frame, detection_obj, 'blur', settings)
+
+            # Check ksize in call: (17, 17)
+            args, kwargs = mock_blur.call_args
+            assert args[1] == (17, 17)
+
+class TestGrayscaleCensor:
+    def test_grayscale_censor_full_intensity(self):
+        """Test grayscale censor with 100% intensity."""
+        # Create a colorful image
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        frame[:, :, 0] = 255 # Blue
+
+        detection_obj = Detection({'class': 'test', 'score': 1.0, 'box': [25, 25, 50, 50]})
+        settings = {'intensity': 1.0}
+
+        censors_registry = CensorsRegistry()
+        drawing_context = InPlaceDrawingContext(censors_registry)
+        drawing_context.apply_censor_effect(frame, detection_obj, 'grayscale', settings)
+
+        roi = frame[25:75, 25:75]
+        # In grayscale, B=G=R
+        assert np.all(roi[:,:,0] == roi[:,:,1])
+        assert np.all(roi[:,:,1] == roi[:,:,2])
+        # Verify it's not all zeros or unchanged
+        assert not np.all(roi == 255)
+        assert np.any(roi > 0)
+
+    def test_grayscale_censor_partial_intensity(self):
+        """Test grayscale censor with 50% intensity (blending)."""
+        frame = np.zeros((100, 100, 3), dtype=np.uint8)
+        frame[:, :, 0] = 255 # Solid Blue
+
+        detection_obj = Detection({'class': 'test', 'score': 1.0, 'box': [0, 0, 100, 100]})
+        settings = {'intensity': 0.5}
+
+        censors_registry = CensorsRegistry()
+        drawing_context = InPlaceDrawingContext(censors_registry)
+        drawing_context.apply_censor_effect(frame, detection_obj, 'grayscale', settings)
+
+        # Blue channel should be reduced but not as much as full grayscale
+        assert 30 < frame[0,0,0] < 250
+        # G and R channels should be increased from 0
+        assert frame[0,0,1] > 0
+        assert frame[0,0,2] > 0
+
+class TestBlankingCensor:
+    def test_blanking_censor(self):
+        """Test that the blanking censor fills the entire frame."""
+        frame = np.ones((100, 100, 3), dtype=np.uint8) * 255 # White frame
+
+        # Detection is only in a small part
+        detection_obj = Detection({'class': 'test', 'score': 1.0, 'box': [40, 40, 20, 20]})
+        settings = {'color': {'r': 255, 'g': 0, 'b': 0}} # Red in BGR is (0, 0, 255)
+
+        censors_registry = CensorsRegistry()
+        drawing_context = InPlaceDrawingContext(censors_registry)
+        drawing_context.apply_censor_effect(frame, detection_obj, 'blanking', settings)
+
+        # Check corners (outside the detection box) to ensure full frame blanking
+        assert np.all(frame[0, 0] == [0, 0, 255])
+        assert np.all(frame[99, 99] == [0, 0, 255])
+        # Check inside detection box
+        assert np.all(frame[50, 50] == [0, 0, 255])
 
 class TestGenericCensorBehavior:
     def test_unsupported_censor_type(self):

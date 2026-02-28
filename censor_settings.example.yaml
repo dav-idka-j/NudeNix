@@ -19,7 +19,7 @@ image_hash_settings:
 # These values will apply to any label unless specifically overridden in the 'labels' section.
 all_labels:
   enabled: false # Disable all labels by default to enable them explicitely
-  min_score: 0.8 # Minimum confidence score for a detection to be considered.
+  min_score: 0.4 # Minimum confidence score for a detection to be considered.
 
   # List of censors to apply, in order.
   # Each censor defines its 'type' and specific 'settings'.
@@ -50,14 +50,11 @@ labels:
       - type: pixelation
         settings:
           strength: 10
-          type: mosaic
           scale_with_detection_size: true
           sampling_mode: accurate
-      - type: box
+      - type: grayscale
         settings:
-          thickness: 10
-          size_percent: 90
-          color: { r: 0, g: 0, b: 255 }
+          intensity: 1.0 # 1.0 for full grayscale, 0.5 for 50% desaturation
   ANUS_EXPOSED:
     censors:
       - type: blur
@@ -65,10 +62,13 @@ labels:
           kernel_size: 15
           sigma: 0
           scale_with_detection_size: true
-
+  MALE_GENITALIA_EXPOSED:
+    censors:
+      - type: blanking # The 'blanking' censor fills the entire frame with a solid color.
+        settings:
+          color: { r: 0, g: 0, b: 0 } # Fill entire frame with black
   FACE_FEMALE:
     enabled: false # Turn off detection for this label
-
   BUTTOCKS_EXPOSED:
     min_score: 0.9
     enabled: true

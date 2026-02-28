@@ -12,7 +12,6 @@ class PixelationCensor:
         self.settings = settings
         self.strength = settings.get('strength', 10)
         self.scale_with_detection_size = settings.get('scale_with_detection_size', True)
-        self.grayscale = settings.get('grayscale', False) # TODO: Move greyscale to its own censor
 
         sampling_mode = settings.get('sampling_mode', 'accurate')
         if sampling_mode == 'fast':
@@ -55,12 +54,6 @@ class PixelationCensor:
 
         if pixel_size <= 0:
             pixel_size = 1
-
-        # Handle grayscale
-        if self.grayscale:
-            roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            # Revert back to 3 channels for merging
-            roi = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
 
         # Determine the size of the small, pixelated ROI
         target_w = max(1, roi.shape[1] // pixel_size)
