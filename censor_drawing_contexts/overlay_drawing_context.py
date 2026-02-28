@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 from typing import Dict, List, Any, TYPE_CHECKING
 from interfaces.base_censor_drawing_context import BaseCensorDrawingContext
-from detection_types import Detection
+from detection_types import Detection, CensorMetadata
 
 if TYPE_CHECKING:
     from censors_registry import CensorsRegistry
@@ -17,7 +17,7 @@ class OverlayDrawingContext(BaseCensorDrawingContext):
         self.censors_registry = censors_registry
         self.commands: List[Dict[str, Any]] = []
 
-    def apply_censor_effect(self, image_np: np.ndarray, detection: 'Detection', censor_type: str, settings: Dict, stats=None) -> None:
+    def apply_censor_effect(self, image_np: np.ndarray, detection: 'Detection', censor_type: str, settings: Dict, stats=None, metadata: 'CensorMetadata' = None) -> None:
         """
         Extracts the ROI, applies the censor, calculates the difference to create an alpha mask,
         and stores the resulting RGBA patch.
@@ -52,9 +52,9 @@ class OverlayDrawingContext(BaseCensorDrawingContext):
 
             if stats:
                 with stats.time_censor(censor_type):
-                    censor_instance.apply(roi_censored, roi_detection)
+                    censor_instance.apply(roi_censored, roi_detection, metadata)
             else:
-                censor_instance.apply(roi_censored, roi_detection)
+                censor_instance.apply(roi_censored, roi_detection, metadata)
 
             # Create Alpha Mask
             # Any pixel that changed in any channel (B, G, or R) is considered "censor content"

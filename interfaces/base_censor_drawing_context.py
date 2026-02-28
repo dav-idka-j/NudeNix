@@ -4,7 +4,7 @@ from typing import Tuple, Dict, Any, TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:
-    from detection_types import Detection
+    from detection_types import Detection, CensorMetadata
 
 class BaseCensorDrawingContext(ABC):
     """
@@ -15,7 +15,7 @@ class BaseCensorDrawingContext(ABC):
     """
 
     @abstractmethod
-    def apply_censor_effect(self, image_np: np.ndarray, detection: 'Detection', censor_type: str, settings: Dict, stats=None) -> None:
+    def apply_censor_effect(self, image_np: np.ndarray, detection: 'Detection', censor_type: str, settings: Dict, stats=None, metadata: 'CensorMetadata' = None) -> None:
         """
         Applies a generic censor effect to the specified detection on the image.
 
@@ -25,5 +25,6 @@ class BaseCensorDrawingContext(ABC):
             censor_type (str): The type of censor to apply (e.g., 'box', 'pixelation').
             settings (Dict): Censor-specific settings (e.g., color for box, pixel_size for pixelation).
             stats (PerformanceStatistics, optional): Statistics object to record metrics.
+            metadata (CensorMetadata, optional): Metadata about the processing environment.
         """
         pass

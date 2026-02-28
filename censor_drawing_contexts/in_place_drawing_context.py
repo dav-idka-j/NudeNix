@@ -4,7 +4,7 @@ from typing import Tuple, Dict, Any, TYPE_CHECKING
 
 from interfaces.base_censor_drawing_context import BaseCensorDrawingContext
 from censors_registry import CensorsRegistry
-from detection_types import Detection
+from detection_types import Detection, CensorMetadata
 
 if TYPE_CHECKING:
     from typing import Protocol
@@ -20,7 +20,7 @@ class InPlaceDrawingContext(BaseCensorDrawingContext):
     def __init__(self, censors_registry: CensorsRegistry):
         self.censors_registry = censors_registry
 
-    def apply_censor_effect(self, image_np: np.ndarray, detection: 'Detection', censor_type: str, settings: Dict, stats=None) -> None:
+    def apply_censor_effect(self, image_np: np.ndarray, detection: 'Detection', censor_type: str, settings: Dict, stats=None, metadata: 'CensorMetadata' = None) -> None:
 
         try:
             label = detection.label()
@@ -28,9 +28,10 @@ class InPlaceDrawingContext(BaseCensorDrawingContext):
 
             if stats:
                 with stats.time_censor(censor_type):
-                    censor_instance.apply(image_np, detection)
+                    censor_instance.apply(image_np, detection, metadata)
             else:
-                censor_instance.apply(image_np, detection)
+                censor_instance.apply(image_np, detection, metadata)
+
         except ValueError as e:
             print(f"Warning: {e}", file=sys.stderr)
             raise e

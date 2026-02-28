@@ -46,20 +46,24 @@ labels:
           display_label: true
           display_score: true
   FEMALE_BREAST_EXPOSED:
+    min_score: 0.6
     censors: # Multiple censors are applied from top to bottom one after the other
       - type: pixelation
         settings:
-          strength: 10
+          strength: 20
+          adaptive: true # Pixel size scales from 1 (at 0.6 score) to 20 (at 1.0 score)
           scale_with_detection_size: true
           sampling_mode: accurate
       - type: grayscale
         settings:
-          intensity: 1.0 # 1.0 for full grayscale, 0.5 for 50% desaturation
+          intensity: 1.0
+          adaptive: true # Intensity scales with confidence ratio
   ANUS_EXPOSED:
     censors:
       - type: blur
         settings:
-          kernel_size: 15
+          kernel_size: 30
+          adaptive: true # Blur radius scales with confidence ratio
           sigma: 0
           scale_with_detection_size: true
   MALE_GENITALIA_EXPOSED:

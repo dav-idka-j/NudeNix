@@ -119,9 +119,9 @@ def test_apply_censorship_single_censor_single_detection(mock_config_loader, moc
         detection=detection, # Pass the Detection object
         censor_type='box',
         settings={'color': (0, 0, 255), 'thickness': -1},
-        stats=None
+        stats=None,
+        metadata=ANY
     )
-
 
 def test_apply_censorship_multiple_censors_multiple_detections(mock_config_loader, mock_drawing_context):
     """
@@ -144,16 +144,16 @@ def test_apply_censorship_multiple_censors_multiple_detections(mock_config_loade
 
     # Check calls for first detection
     mock_drawing_context.apply_censor_effect.assert_any_call(
-        image_np=ANY, detection=detection1, censor_type='box', settings={'color': (0, 0, 255), 'thickness': -1}, stats=None
+        image_np=ANY, detection=detection1, censor_type='box', settings={'color': (0, 0, 255), 'thickness': -1}, stats=None, metadata=ANY
     )
     mock_drawing_context.apply_censor_effect.assert_any_call(
-        image_np=ANY, detection=detection1, censor_type='pixelation', settings={'pixel_size': 16}, stats=None
+        image_np=ANY, detection=detection1, censor_type='pixelation', settings={'pixel_size': 16}, stats=None, metadata=ANY
     )
 
     # Check calls for second detection
     mock_drawing_context.apply_censor_effect.assert_any_call(
-        image_np=ANY, detection=detection2, censor_type='box', settings={'color': (0, 0, 255), 'thickness': -1}, stats=None
+        image_np=ANY, detection=detection2, censor_type='box', settings={'color': (0, 0, 255), 'thickness': -1}, stats=None, metadata=ANY
     )
     mock_drawing_context.apply_censor_effect.assert_any_call(
-        image_np=ANY, detection=detection2, censor_type='pixelation', settings={'pixel_size': 16}, stats=None
+        image_np=ANY, detection=detection2, censor_type='pixelation', settings={'pixel_size': 16}, stats=None, metadata=ANY
     )

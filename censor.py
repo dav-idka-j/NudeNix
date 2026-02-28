@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Tuple
 
 from config_loader import ConfigLoader
 from interfaces.base_censor_drawing_context import BaseCensorDrawingContext
-from detection_types import Detection
+from detection_types import Detection, CensorMetadata
 from statistics import CensorReportModule
 
 class CensorProcessor:
@@ -45,6 +45,22 @@ class CensorProcessor:
             if score < effective_settings.get('min_score', 0.0):
                 continue
 
+            # Calculate confidence ratio: sitting between min_score and 1.0
+            min_score = effective_settings.get('min_score', 0.0)
+            conf_ratio = 0.0
+            if score > min_score:
+                range_size = 1.0 - min_score
+                if range_size > 0:
+                    conf_ratio = (score - min_score) / range_size
+
+            metadata = CensorMetadata(
+                label=label,
+                score=score,
+                min_score=min_score,
+                confidence_ratio=min(1.0, max(0.0, conf_ratio)),
+                frame_time=frame_time
+            )
+
             # Get bounding box from Detection object
             bounding_box_for_drawing = detection.bounding_box()
 
@@ -60,6 +76,7 @@ class CensorProcessor:
                     detection=detection,
                     censor_type=censor_type,
                     settings=censor_settings,
-                    stats=stats
+                    stats=stats,
+                    metadata=metadata
                 )
         return frame_ndarray

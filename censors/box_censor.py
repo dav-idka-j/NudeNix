@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from typing import Tuple, Dict, Any
 
-from detection_types import Detection # Import Detection class
+from detection_types import Detection
 
 class BoxCensor:
     """
@@ -19,8 +19,9 @@ class BoxCensor:
 
         self.display_label = settings.get('display_label', True)
         self.display_score = settings.get('display_score', True)
+        self.adaptive = settings.get('adaptive', False)
 
-    def apply(self, image_np: np.ndarray, detection: Detection) -> None:
+    def apply(self, image_np: np.ndarray, detection: Detection, metadata: Any = None) -> None:
         x_n, y_n, w_n, h_n = detection.x(), detection.y(), detection.width(), detection.height()
 
         # Adjust box size based on size_percent

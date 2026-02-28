@@ -141,6 +141,7 @@ This section details the censor types currently implemented and available for us
     *   `color` (object, default: `{r: 0, g: 0, b: 255}` - Red): The color of the box in RGB format. Example: `{r: 0, g: 255, b: 0}` for Green.
     *   `display_label` (boolean, default: `true`): Whether to display the detection label as text above the box.
     *   `display_score` (boolean, default: `true`): Whether to display the detection score as text above the box.
+    *   `adaptive` (boolean, default: `false`): Reserved for future confidence-based scaling.
 
 ##### 2. `pixelation` Censor
 
@@ -152,6 +153,7 @@ This section details the censor types currently implemented and available for us
     *   `sampling_mode` (string, default: `'accurate'`): How colors are sampled for the pixel blocks.
         *   `'accurate'`: Uses `cv2.INTER_AREA` for downscaling, which provides a good average color for the block.
         *   `'fast'`: Uses `cv2.INTER_NEAREST` for downscaling, which samples the center pixel's color, but is less accurate.
+    *   `adaptive` (boolean, default: `false`): If `true`, the pixel size will scale dynamically based on the detection confidence.
 
 ##### 3. `blur` Censor
 
@@ -161,6 +163,7 @@ This section details the censor types currently implemented and available for us
     *   `kernel_size` (integer, default: `15`): Defines the blur radius.
     *   `sigma` (integer, default: `0`): The standard deviation for Gaussian kernel.
     *   `scale_with_detection_size` (boolean, default: `true`): If `true`, the `kernel_size` is interpreted as a percentage of the detected region's smallest dimension.
+    *   `adaptive` (boolean, default: `false`): If `true`, the blur radius will scale dynamically based on the detection confidence.
 
 ##### 4. `grayscale` Censor
 
@@ -168,6 +171,7 @@ This section details the censor types currently implemented and available for us
 *   **Description:** Desaturates the detected region.
 *   **Settings:**
     *   `intensity` (float, default: `1.0`): Strength of the grayscale effect (`0.0` to `1.0`).
+    *   `adaptive` (boolean, default: `false`): If `true`, the intensity will scale dynamically based on the detection confidence.
 
 ##### 5. `blanking` Censor
 
@@ -175,6 +179,24 @@ This section details the censor types currently implemented and available for us
 *   **Description:** Fills the **entire video frame** with a solid color.
 *   **Settings:**
     *   `color` (object, default: `{r: 0, g: 0, b: 0}`): The color to fill the frame with in RGB format.
+
+#### Adaptive Strength
+
+Censors support an `adaptive: true` toggle. When enabled, the strength of the effect (e.g., pixel size, blur radius, or grayscale intensity) scales linearly based on NudeNet's confidence score. 
+
+If the score is exactly at the `min_score` threshold, the effect is minimal; if the score is `1.0`, the effect reaches its configured maximum.
+
+**Example:**
+```yaml
+labels:
+  FEMALE_BREAST_EXPOSED:
+    min_score: 0.6
+    censors:
+      - type: pixelation
+        settings:
+          strength: 20
+          adaptive: true # Pixel size scales from ~1 at 0.6 confidence to 20 at 1.0 confidence.
+```
 
 ### Supported Nudenet Labels
 
@@ -212,8 +234,20 @@ The modular design of the censoring system allows for easy addition of new censo
 1.  **Create a New File:** In the `censors/` directory, create a new Python file (e.g., `censors/my_custom_censor.py`).
 2.  **Define a Censor Class:** Inside this file, define a class named according to the pattern `<CensorType>Censor` (e.g., `MyCustomCensor`). This class must have:
     *   An `__init__(self, settings)` method that takes a dictionary of settings specific to this censor type.
-    *   An `apply(self, frame_ndarray, detection)` method that takes the NumPy array of the video frame (to be modified in-place) and a single detection dictionary.
-3.  **Update `censor_settings.yaml`:** In your `censor_settings.yaml` file, add your new censor type under the `censors` list for `all_labels` or specific labels. The `type` key in the YAML should match the lowercase, underscore-separated version of your class name (e.g., `MyCustomCensor` -> `my_custom`).
+    *   An `apply(self, frame_ndarray, detection, metadata)` method that takes the NumPy array of the video frame, a detection object, and an environmental metadata object.
+    *   A `get_type(self) -> str` method that returns the string type for registration.
+
+#### Using Metadata
+
+The `metadata` object (`CensorMetadata`) provided to the `apply` method contains context about the current detection:
+*   `metadata.label`: The string label of the detection.
+*   `metadata.score`: The confidence score (0.0 to 1.0).
+*   `metadata.min_score`: The threshold configured for this label.
+*   `metadata.confidence_ratio`: A pre-calculated value from 0.0 (at `min_score`) to 1.0 (at `score=1.0`). Useful for scaling effects.
+*   `metadata.frame_time`: The timestamp of the current frame.
+
+3.  **Update `censor_settings.yaml`:**
+ In your `censor_settings.yaml` file, add your new censor type under the `censors` list for `all_labels` or specific labels. The `type` key in the YAML should match the lowercase, underscore-separated version of your `get_type` method.
 
 ### Packaging with PyInstaller
 

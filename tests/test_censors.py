@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from censor_drawing_contexts.in_place_drawing_context import InPlaceDrawingContext
 from censors_registry import CensorsRegistry
-from detection_types import Detection
+from detection_types import Detection, CensorMetadata
 
 
 class TestBoxCensor:
@@ -169,6 +169,34 @@ class TestGrayscaleCensor:
         # G and R channels should be increased from 0
         assert frame[0,0,1] > 0
         assert frame[0,0,2] > 0
+
+    def test_grayscale_censor_adaptive(self):
+        """Test that adaptive grayscale scales intensity with confidence."""
+        # Frame 1: Low confidence (0.0 ratio) -> Should have 0 intensity (no change)
+        frame_low = np.zeros((10, 10, 3), dtype=np.uint8)
+        frame_low[:, :, 0] = 255
+
+        detection = Detection({'class': 'test', 'score': 0.5, 'box': [0, 0, 10, 10]})
+        metadata_low = CensorMetadata(label='test', score=0.5, min_score=0.5, confidence_ratio=0.0)
+
+        settings = {'intensity': 1.0, 'adaptive': True}
+        censors_registry = CensorsRegistry()
+        drawing_context = InPlaceDrawingContext(censors_registry)
+
+        drawing_context.apply_censor_effect(frame_low, detection, 'grayscale', settings, metadata=metadata_low)
+        # Should be unchanged (Still solid blue)
+        assert np.all(frame_low[:, :, 0] == 255)
+        assert np.all(frame_low[:, :, 1] == 0)
+
+        # Frame 2: High confidence (1.0 ratio) -> Should have full intensity (grayscale)
+        frame_high = np.zeros((10, 10, 3), dtype=np.uint8)
+        frame_high[:, :, 0] = 255
+        metadata_high = CensorMetadata(label='test', score=1.0, min_score=0.5, confidence_ratio=1.0)
+
+        drawing_context.apply_censor_effect(frame_high, detection, 'grayscale', settings, metadata=metadata_high)
+        # Should be grayscale (B=G=R)
+        assert frame_high[0, 0, 0] == frame_high[0, 0, 1] == frame_high[0, 0, 2]
+        assert frame_high[0, 0, 0] < 200 # Weighted gray of blue is low
 
 class TestBlankingCensor:
     def test_blanking_censor(self):
