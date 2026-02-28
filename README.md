@@ -148,22 +148,33 @@ This section details the censor types currently implemented and available for us
 *   **Description:** Applies a pixelation (mosaic) effect to the detected region.
 *   **Settings:**
     *   `strength` (integer, default: `10`): The block size in pixels for pixelation. A higher value means larger pixels and stronger effect.
-    *   `type` (string, default: `'mosaic'`): The type of pixelation effect. Currently only `'mosaic'` is supported.
     *   `scale_with_detection_size` (boolean, default: `true`): If `true`, the `strength` is interpreted as a percentage of the detected region's smallest dimension, making the pixelation adaptive.
-    *   `grayscale` (boolean, default: `false`): If `true`, the pixelated region will also be converted to grayscale.
     *   `sampling_mode` (string, default: `'accurate'`): How colors are sampled for the pixel blocks.
         *   `'accurate'`: Uses `cv2.INTER_AREA` for downscaling, which provides a good average color for the block.
         *   `'fast'`: Uses `cv2.INTER_NEAREST` for downscaling, which samples the center pixel's color, but is less accurate.
-    *   `shape` (string, default: `'square'`): The shape of the pixelation blocks. Currently only `'square'` is supported.
 
 ##### 3. `blur` Censor
 
 *   **Type:** `blur`
-*   **Description:** Applies a (Gaussian) blur effect to the detected region.
+*   **Description:** Applies a Gaussian blur effect to the detected region.
 *   **Settings:**
-    *   `kernel_size` (integer, default: `15`): Defines how many surrounding pixels to incorporate in the averaging process. A higher value will result in a stronger blur.
-    *   `sigma` (integer, default: `0`): Determines the standard deviation in the applied Gaussian function. A higher value will result in a stronger blur.
-    *   `scale_with_detection_size` (boolean, default: `true`): If `true`, the `strength` is interpreted as a percentage of the detected region's smallest dimension, making the blur adaptive.
+    *   `kernel_size` (integer, default: `15`): Defines the blur radius.
+    *   `sigma` (integer, default: `0`): The standard deviation for Gaussian kernel.
+    *   `scale_with_detection_size` (boolean, default: `true`): If `true`, the `kernel_size` is interpreted as a percentage of the detected region's smallest dimension.
+
+##### 4. `grayscale` Censor
+
+*   **Type:** `grayscale`
+*   **Description:** Desaturates the detected region.
+*   **Settings:**
+    *   `intensity` (float, default: `1.0`): Strength of the grayscale effect (`0.0` to `1.0`).
+
+##### 5. `blanking` Censor
+
+*   **Type:** `blanking`
+*   **Description:** Fills the **entire video frame** with a solid color.
+*   **Settings:**
+    *   `color` (object, default: `{r: 0, g: 0, b: 0}`): The color to fill the frame with in RGB format.
 
 ### Supported Nudenet Labels
 
