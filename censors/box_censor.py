@@ -64,3 +64,6 @@ class BoxCensor:
                 text_y = y1 + 20 # Draw below if not enough space above
 
             cv2.putText(image_np, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+    def get_type(self) -> str:
+        return "box"

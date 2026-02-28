@@ -5,14 +5,18 @@ from typing import Dict, Any, List, Tuple
 from config_loader import ConfigLoader
 from interfaces.base_censor_drawing_context import BaseCensorDrawingContext
 from detection_types import Detection
+from statistics import CensorReportModule
 
 class CensorProcessor:
-    def __init__(self, config_loader: ConfigLoader, drawing_context: BaseCensorDrawingContext):
+    def __init__(self, config_loader: ConfigLoader, drawing_context: BaseCensorDrawingContext, stats=None):
         self.config_loader = config_loader
         self.drawing_context = drawing_context
         print(f"CensorProcessor initialized with config and drawing context.")
 
-    def apply_censorship(self, frame_ndarray: np.ndarray, detections: List[Detection], frame_time: float = 0.0) -> np.ndarray:
+        if stats and stats.enabled:
+            stats.register_module(CensorReportModule(), priority=40)
+
+    def apply_censorship(self, frame_ndarray: np.ndarray, detections: List[Detection], frame_time: float = 0.0, stats=None) -> np.ndarray:
         """
         Applies censorship effects to the given frame based on detections and configured settings,
         delegating the actual drawing to the provided drawing_context.
@@ -23,6 +27,7 @@ class CensorProcessor:
                                         which may modify it in-place or use it for instructions.
             detections (List[Detection]): A list of Detection objects.
             frame_time (float): The timestamp of the current frame (for debugging/logging).
+            stats (PerformanceStatistics, optional): Statistics object to record metrics.
 
         Returns:
             np.ndarray: The (potentially modified) frame_ndarray.
@@ -54,6 +59,7 @@ class CensorProcessor:
                     image_np=frame_ndarray,
                     detection=detection,
                     censor_type=censor_type,
-                    settings=censor_settings
+                    settings=censor_settings,
+                    stats=stats
                 )
         return frame_ndarray

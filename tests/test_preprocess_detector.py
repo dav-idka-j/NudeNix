@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch, call, ANY
 from preprocess_detector import ImageHashDetector
 from detector import NsfwDetector
 import imagehash
@@ -88,7 +88,7 @@ def test_imagehash_detector_disabled(mock_nsfw_detector, dummy_image):
     detector = ImageHashDetector(mock_nsfw_detector, config)
 
     result = detector.detect(dummy_image)
-    mock_nsfw_detector.detect.assert_called_once_with(dummy_image)
+    mock_nsfw_detector.detect.assert_called_once_with(dummy_image, stats=ANY)
     assert result == mock_nsfw_detector.detect.return_value
 
 def test_imagehash_detector_first_frame_runs_detection(mock_nsfw_detector, patch_imagehash_functions, dummy_image):
@@ -100,7 +100,7 @@ def test_imagehash_detector_first_frame_runs_detection(mock_nsfw_detector, patch
     patch_imagehash_functions['average_hash'].return_value = HASH_INITIAL
 
     result = detector.detect(dummy_image)
-    mock_nsfw_detector.detect.assert_called_once_with(dummy_image)
+    mock_nsfw_detector.detect.assert_called_once_with(dummy_image, stats=ANY)
     assert result == mock_nsfw_detector.detect.return_value
     assert detector.last_known_hash == HASH_INITIAL
     assert detector.last_known_detections == mock_nsfw_detector.detect.return_value
@@ -127,7 +127,7 @@ def test_imagehash_detector_max_skip_frames_reached_runs_detection(
     # Frame 3: Hash is similar (HASH_SIMILAR, diff 0). max_skip_frames (1) reached. Should run detection.
     patch_imagehash_functions['average_hash'].return_value = HASH_SIMILAR
     detector.detect(dummy_image)
-    mock_nsfw_detector.detect.assert_called_once_with(dummy_image)
+    mock_nsfw_detector.detect.assert_called_once_with(dummy_image, stats=ANY)
     assert detector.current_frame_skip_count == 0 # Reset after detection
 
 def test_imagehash_detector_similar_hash_skips_detection(
@@ -168,7 +168,7 @@ def test_imagehash_detector_different_hash_runs_detection(
     patch_imagehash_functions['average_hash'].return_value = HASH_DIFFERENT
     second_detections = detector.detect(dummy_image)
 
-    mock_nsfw_detector.detect.assert_called_once_with(dummy_image)
+    mock_nsfw_detector.detect.assert_called_once_with(dummy_image, stats=ANY)
     assert second_detections == mock_nsfw_detector.detect.return_value
     assert detector.current_frame_skip_count == 0
 

@@ -52,3 +52,6 @@ class BlurCensor:
         blurred_roi = cv2.GaussianBlur(roi, (k_size, k_size), self.sigma)
 
         image_np[y_min:y_max, x_min:x_max] = blurred_roi
+
+    def get_type(self) -> str:
+        return "blur"
