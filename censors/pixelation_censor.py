@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from typing import Tuple, Dict, Any
 
-from detection_types import Detection # Import Detection class
+from detection_types import Detection
 
 class PixelationCensor:
     """
@@ -12,6 +12,7 @@ class PixelationCensor:
         self.settings = settings
         self.strength = settings.get('strength', 10)
         self.scale_with_detection_size = settings.get('scale_with_detection_size', True)
+        self.adaptive = settings.get('adaptive', False)
 
         sampling_mode = settings.get('sampling_mode', 'accurate')
         if sampling_mode == 'fast':
@@ -25,7 +26,7 @@ class PixelationCensor:
         if self.strength <= 0:
             self.strength = 1 # Prevent invalid values
 
-    def apply(self, image_np: np.ndarray, detection: Detection) -> None:
+    def apply(self, image_np: np.ndarray, detection: Detection, metadata: Any = None) -> None:
         x_min, y_min, x_max, y_max = detection.x1(), detection.y1(), detection.x2(), detection.y2()
 
         # Ensure bounding box coordinates are within image dimensions
@@ -44,13 +45,17 @@ class PixelationCensor:
             return
 
         # Calculate pixel size
+        p_strength = self.strength
+        if self.adaptive and metadata:
+            p_strength = self.strength * metadata.confidence_ratio
+
         if self.scale_with_detection_size:
             # Strength is a percentage of the smaller dimension
             smaller_dim = min(roi.shape[0], roi.shape[1])
-            pixel_size = int((self.strength / 100.0) * smaller_dim)
+            pixel_size = int((p_strength / 100.0) * smaller_dim)
         else:
             # Strength is an absolute pixel size
-            pixel_size = self.strength
+            pixel_size = int(p_strength)
 
         if pixel_size <= 0:
             pixel_size = 1

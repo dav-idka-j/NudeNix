@@ -1,4 +1,5 @@
 from typing import Dict, Tuple, Any
+from dataclasses import dataclass
 
 class Detection:
     """
@@ -24,7 +25,7 @@ class Detection:
     def height(self) -> int:
         """Returns the height of the bounding box."""
         return int(self._box[3])
-    
+
     def x1(self) -> int:
         """Returns the x-coordinate of the top-left corner (same as x())."""
         return self.x()
@@ -56,3 +57,14 @@ class Detection:
     def raw(self) -> Dict[str, Any]:
         """Returns the original raw detection dictionary."""
         return self._raw
+
+@dataclass
+class CensorMetadata:
+    """
+    Provides environmental context to censor implementations during application.
+    """
+    label: str
+    score: float
+    min_score: float
+    confidence_ratio: float # 0.0 at min_score, 1.0 at score=1.0
+    frame_time: float = 0.0
