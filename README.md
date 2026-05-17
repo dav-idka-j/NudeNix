@@ -11,17 +11,23 @@ NudeNix is a powerful, modular utility for NSFW content detection and censoring.
 *   [Pillow](https://python-pillow.org/) for screen capture
 *   [NumPy](https://numpy.org/) for numerical operations
 *   [ImageHash](https://github.com/JohannesBuchner/imagehash) for perceptual hashing
+*   [MPV](https://mpv.io/) for high-performance video playback and streaming
 
 ## Features
 
 *   **Real-Time Screen Censoring:** Capture any monitor and apply a transparent overlay that hides NSFW content in real-time.
-*   **Modular Architecture:** Easily switch between input sources (files, screen) and output destinations (files, overlay).
+*   **MPV Streaming Backend:** Stream processed video directly to MPV with support for pausing and scrubbing using a growing temporary file.
+*   **Modular Architecture:** Easily switch between input sources (files, screen) and output destinations (files, overlay, mpv).
 *   **Highly Configurable:** Control detection sensitivity, censor types, and per-label settings via `censor_settings.yaml`.
 *   **Extensible:** Add new censor effects by simply dropping a Python file into the `censors/` directory.
 
 ### Prerequisites
 
-**Python 3.10+:** The project is developed using Python.  Download from [python.org](https://www.python.org/downloads/).
+*   **Python 3.10+:** The project is developed using Python. Download from [python.org](https://www.python.org/downloads/).
+*   **MPV Media Player:** Required for the `mpv://` output backend.
+    *   **Linux:** Install via your package manager (e.g., `sudo apt install mpv` or `sudo dnf install mpv`). Ensure `libmpv` is also installed.
+    *   **macOS:** `brew install mpv`
+    *   **Windows:** Download from [mpv.io](https://mpv.io/installation/). Ensure `mpv-1.dll` is in your PATH or accessible.
 
 ## Installation
 
@@ -67,12 +73,16 @@ python main.py -i <INPUT_URI> -o <OUTPUT_URI> [OPTIONS]
 *   **Output (`-o`):**
     *   `file://path/to/output.mp4`: Save the censored result to a file.
     *   `overlay://`: Display censorship as a transparent system overlay.
+    *   `mpv://`: Stream the result directly to the MPV media player.
 
 ### Examples
 
 ```bash
 # Live screen censoring with overlay
 python main.py -i screen://1 -o overlay://
+
+# Censoring a video file and streaming to MPV
+python main.py -i file://input.mp4 -o mpv://
 
 # Censoring a video file and saving to MP4
 python main.py -i file://input.mp4 -o file://censored.mp4

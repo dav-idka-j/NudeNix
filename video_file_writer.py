@@ -36,8 +36,14 @@ class VideoFileWriter(BaseFrameWriter):
                 # Use Fraction for rate to avoid floating point issues and satisfy PyAV
                 rate = Fraction(fps).limit_denominator()
 
-                if self.output_format == 'mp4':
-                    self.video_out = self.output_container.add_stream('h264', rate=rate)
+                if self.output_format in ['mp4', 'matroska', 'mkv']:
+                    # Use libx264 with low latency settings for streaming
+                    options = {'preset': 'ultrafast', 'tune': 'zerolatency'}
+                    try:
+                        self.video_out = self.output_container.add_stream('libx264', rate=rate, options=options)
+                    except Exception:
+                        # Fallback to 'h264' if 'libx264' name is not recognized by the build
+                        self.video_out = self.output_container.add_stream('h264', rate=rate, options=options)
                 elif self.output_format == 'webm':
                     self.video_out = self.output_container.add_stream('libvpx', rate=rate)
                 else:
@@ -49,8 +55,8 @@ class VideoFileWriter(BaseFrameWriter):
                 self.video_out.pix_fmt = 'yuv420p'
 
             if audio_in and self.audio_out is None:
-                if self.output_format == 'mp4':
-                    # For MP4, remux audio if template is available
+                if self.output_format in ['mp4', 'matroska', 'mkv']:
+                    # For MP4 and MKV, remux audio if template is available
                     self.audio_out = self.output_container.add_stream_from_template(audio_in)
                 elif self.output_format == 'webm':
                     # For WebM, transcode to Opus
@@ -83,7 +89,7 @@ class VideoFileWriter(BaseFrameWriter):
         if not self.audio_out:
             return
 
-        if self.output_format == 'mp4':
+        if self.output_format in ['mp4', 'matroska', 'mkv']:
             # Remux audio
             if packet.dts is None:
                 return
