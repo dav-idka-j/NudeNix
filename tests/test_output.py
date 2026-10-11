@@ -76,7 +76,37 @@ def test_open_creates_container_and_streams_mp4(mock_av_open, mock_video_reader)
     # Check video stream setup
     from fractions import Fraction
     expected_rate = Fraction(mock_video_reader.get_fps.return_value).limit_denominator()
-    mock_container.add_stream.assert_called_once_with('h264', rate=expected_rate)
+    expected_options = {'preset': 'ultrafast', 'tune': 'zerolatency'}
+    mock_container.add_stream.assert_called_once_with('libx264', rate=expected_rate, options=expected_options)
+    assert mock_video_out.width == mock_video_reader.get_frame_size.return_value[0]
+    assert mock_video_out.height == mock_video_reader.get_frame_size.return_value[1]
+    assert mock_video_out.pix_fmt == 'yuv420p'
+    # Check audio stream setup
+    mock_container.add_stream_from_template.assert_called_once_with(mock_video_reader.get_audio_stream.return_value)
+
+
+@patch('video_file_writer.av.open')
+def test_open_creates_container_and_streams_mkv(mock_av_open, mock_video_reader):
+    """Test open method creates container and streams for Matroska output."""
+    mock_container = MagicMock(spec=av.container.OutputContainer)
+    mock_video_out = MagicMock(spec=av.VideoStream)
+    mock_video_out.name = 'video_out_0'
+    mock_audio_out = MagicMock(spec=av.AudioStream)
+    mock_audio_out.name = 'audio_out_0'
+
+    mock_av_open.return_value = mock_container
+    mock_container.add_stream.side_effect = [mock_video_out]
+    mock_container.add_stream_from_template.return_value = mock_audio_out
+
+
+    writer = VideoFileWriter("output.mkv", mock_video_reader, output_format='matroska')
+    assert writer.open() is True
+
+    mock_av_open.assert_called_once_with("output.mkv", 'w', format='matroska')
+    # Check video stream setup
+    expected_rate = Fraction(mock_video_reader.get_fps.return_value).limit_denominator()
+    expected_options = {'preset': 'ultrafast', 'tune': 'zerolatency'}
+    mock_container.add_stream.assert_called_once_with('libx264', rate=expected_rate, options=expected_options)
     assert mock_video_out.width == mock_video_reader.get_frame_size.return_value[0]
     assert mock_video_out.height == mock_video_reader.get_frame_size.return_value[1]
     assert mock_video_out.pix_fmt == 'yuv420p'

@@ -15,6 +15,7 @@ from detector import NsfwDetector
 from censor import CensorProcessor
 from video_file_writer import VideoFileWriter
 from output.screen_writer import ScreenWriter
+from output.mpv_writer import MpvWriter
 from config_loader import ConfigLoader
 from postprocessor import BoxClusterer
 from preprocess_detector import ImageHashDetector
@@ -181,7 +182,10 @@ def main(args):
             reader=reader,
             overlay_context=drawing_context
         )
-    elif output_uri.scheme in ['mpv', 'pyvidplayer2']:
+    elif output_uri.scheme == 'mpv':
+        drawing_context = InPlaceDrawingContext(censors_registry)
+        writer = MpvWriter(reader_instance=reader)
+    elif output_uri.scheme == 'pyvidplayer2':
         print(f"Error: Output scheme '{output_uri.scheme}' not yet implemented.", file=sys.stderr)
         sys.exit(1)
     else:
